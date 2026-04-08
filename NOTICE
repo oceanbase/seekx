@@ -1,0 +1,24 @@
+seekx
+Copyright 2026 seekx contributors
+
+This project is licensed under the MIT License (see LICENSE).
+
+-------------------------------------------------------------------------------
+Third-Party Software Notices
+-------------------------------------------------------------------------------
+
+This project is inspired by and partially derived from the design of:
+
+  qmd — Personal Knowledge Base Search
+  Copyright (c) 2024 Tobi Lutke
+  https://github.com/tobi/qmd
+  License: MIT
+
+  The overall architecture (SQLite-backed store, chunk-based FTS5 indexing,
+  MCP integration, and CLI design) was informed by qmd's approach.
+  seekx extends this foundation with:
+    - Remote model APIs for embedding, reranking, and query expansion
+    - Chinese-language FTS5 support via Jieba tokenization
+    - Real-time file-system watching (chokidar)
+    - PDF and plain-text document support
+    - Multi-collection management

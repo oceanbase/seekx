@@ -1,0 +1,64 @@
+/**
+ * query.ts — seekx query <question>
+ *
+ * Full pipeline: expand → hybrid search → rerank, returning rich results
+ * intended for AI agent consumption (MCP) or interactive use.
+ *
+ * Differences from seekx search:
+ *   - Always enables expand (LLM query rewriting).
+ *   - Adds expandedQueries to output.
+ *   - Aliases as "q".
+ */
+
+import type { Command } from "commander";
+import { hybridSearch } from "@seekx/core";
+import { formatSearchResults } from "../formatter.ts";
+import { die, EXIT, openContext, warn } from "../utils.ts";
+
+export function registerQuery(program: Command): void {
+  program
+    .command("query <question>")
+    .alias("q")
+    .description("Search with automatic query expansion and reranking")
+    .option("-c, --collection <name>", "Restrict search to a specific collection")
+    .option("-n, --limit <number>", "Maximum number of results", "10")
+    .option("--json", "Machine-readable output")
+    .option("--md", "Markdown output")
+    .action(
+      async (
+        question: string,
+        opts: { collection?: string; limit: string; json?: boolean; md?: boolean },
+      ) => {
+        const ctx = await openContext({ json: opts.json });
+        const { store, client, cfg } = ctx;
+
+        const limit = Number.parseInt(opts.limit, 10);
+        if (Number.isNaN(limit) || limit < 1) {
+          die("--limit must be a positive integer.", EXIT.USER_ERROR, opts.json);
+        }
+
+        const { results, expandedQueries, warnings } = await hybridSearch(store, client, question, {
+          ...(opts.collection ? { collections: [opts.collection] } : {}),
+          limit,
+          mode: "hybrid",
+          useRerank: cfg.search.rerank,
+          useExpand: true,
+        });
+
+        for (const w of warnings) warn(w);
+
+        if (results.length === 0) {
+          if (!opts.json) console.log("No results.");
+          ctx.db.close();
+          process.exit(EXIT.NO_RESULTS);
+        }
+
+        formatSearchResults(results, {
+          json: opts.json,
+          md: opts.md,
+          expandedQueries,
+        });
+        ctx.db.close();
+      },
+    );
+}

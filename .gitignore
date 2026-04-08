@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.js.map
+*.tsbuildinfo
+
+# Bun
+bun.lockb
+.bun-cache/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Test artifacts
+coverage/
+
+# Project-local planning docs (not tracked)
+seekx-plan.md

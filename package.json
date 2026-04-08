@@ -1,0 +1,15 @@
+{
+  "name": "seekx-monorepo",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "test": "bun test --recursive packages/",
+    "typecheck": "tsc -b packages/core packages/cli",
+    "lint": "biome check packages/",
+    "format": "biome format --write packages/"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "latest",
+    "typescript": "^5.8.3"
+  }
+}

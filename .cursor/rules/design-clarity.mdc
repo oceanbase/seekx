@@ -1,0 +1,25 @@
+---
+description: Explain design and keep code readable for experienced contributors
+alwaysApply: true
+---
+
+# Design clarity and readable source
+
+This is a formal project. The maintainer is highly experienced with coding; explanations should be **precise and source-grounded**, not hand-wavy.
+
+## When implementing or changing behavior
+
+- State **goals**, **key abstractions**, and how they connect to existing code.
+- Describe **data flow and control flow** where non-obvious.
+- Call out **edge cases, invariants, and failure modes** that matter for correctness or ops.
+- Prefer referencing **actual files and symbols** (paths, function names) over vague descriptions.
+
+## Code and documentation language
+
+- **Comments, docstrings, commit messages, and project docs**: English unless the user explicitly requests another language for that artifact.
+- **Chat with the user**: follow the user’s language preference (e.g. 简体中文 when asked).
+
+## Code quality
+
+- Match existing naming, structure, and patterns in the repo.
+- Avoid drive-by refactors unrelated to the task; keep diffs focused.

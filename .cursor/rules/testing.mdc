@@ -1,0 +1,21 @@
+---
+description: Require adequate automated tests for behavioral changes
+alwaysApply: true
+---
+
+# Testing expectations
+
+Every development step that changes observable behavior should be **verifiable with automated tests** where practical.
+
+## What to do
+
+- Add or update **tests** (unit, integration, or e2e) that cover the new or changed behavior—not only happy paths when risks exist.
+- If a change is hard to test automatically, say **why**, what was tested manually, and what residual risk remains.
+- When touching a subsystem, prefer extending **existing test patterns** in the repo (frameworks, fixtures, naming).
+
+## What to communicate
+
+- How to **run the relevant tests** locally (command or target).
+- What the tests **assert** and what they **do not** guarantee.
+
+Do not ship behavioral changes without a clear test story unless the user explicitly agrees to an exception.

@@ -1,0 +1,29 @@
+{
+  "name": "seekx",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "seekx": "./src/seekx.ts"
+  },
+  "scripts": {
+    "test": "bun test test/",
+    "typecheck": "tsc --noEmit",
+    "dev": "bun run src/seekx.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.2",
+    "@seekx/core": "workspace:*",
+    "commander": "^13.1.0",
+    "@inquirer/prompts": "^7.5.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  }
+}
