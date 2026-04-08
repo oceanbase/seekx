@@ -6,11 +6,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { openDatabase } from "../src/db.ts";
-import { Store } from "../src/store.ts";
-import { hybridSearch } from "../src/search.ts";
 import type { SeekxClient } from "../src/client.ts";
+import { openDatabase } from "../src/db.ts";
 import type { Database } from "../src/db.ts";
+import { hybridSearch } from "../src/search.ts";
+import { Store } from "../src/store.ts";
 
 // ---------------------------------------------------------------------------
 // Minimal SeekxClient stub
@@ -38,12 +38,40 @@ beforeEach(async () => {
   store.addCollection({ name: "col", path: "/col" });
 
   // Insert two documents with distinct content
-  const docA = store.upsertDocument({ collection: "col", path: "/col/a.md", title: "Alpha", mtime: 1, hash: "ha" });
-  const cA = store.insertChunk({ doc_id: docA, chunk_idx: 0, content: "machine learning algorithms", heading_path: null, start_line: 0, end_line: 3, token_count: 3 });
+  const docA = store.upsertDocument({
+    collection: "col",
+    path: "/col/a.md",
+    title: "Alpha",
+    mtime: 1,
+    hash: "ha",
+  });
+  const cA = store.insertChunk({
+    doc_id: docA,
+    chunk_idx: 0,
+    content: "machine learning algorithms",
+    heading_path: null,
+    start_line: 0,
+    end_line: 3,
+    token_count: 3,
+  });
   store.insertFTS(cA, "machine learning algorithms");
 
-  const docB = store.upsertDocument({ collection: "col", path: "/col/b.md", title: "Beta", mtime: 1, hash: "hb" });
-  const cB = store.insertChunk({ doc_id: docB, chunk_idx: 0, content: "vector database embeddings", heading_path: null, start_line: 0, end_line: 3, token_count: 3 });
+  const docB = store.upsertDocument({
+    collection: "col",
+    path: "/col/b.md",
+    title: "Beta",
+    mtime: 1,
+    hash: "hb",
+  });
+  const cB = store.insertChunk({
+    doc_id: docB,
+    chunk_idx: 0,
+    content: "vector database embeddings",
+    heading_path: null,
+    start_line: 0,
+    end_line: 3,
+    token_count: 3,
+  });
   store.insertFTS(cB, "vector database embeddings");
 });
 
@@ -88,7 +116,8 @@ describe("hybridSearch — result structure", () => {
   test("result has required fields", async () => {
     const { results } = await hybridSearch(store, null, "vector", { mode: "bm25" });
     if (results.length > 0) {
-      const r = results[0]!;
+      const r = results[0];
+      if (!r) throw new Error("Expected at least one search result");
       expect(typeof r.file).toBe("string");
       expect(typeof r.score).toBe("number");
       expect(typeof r.snippet).toBe("string");

@@ -25,9 +25,15 @@ import { cut } from "@node-rs/jieba";
  * The original text is preserved so phrase and exact-match queries still work.
  */
 export function expandForFTS(text: string): string {
+  if (!containsHan(text)) return text;
+
   const tokens = segmentChinese(text);
   if (tokens.length === 0) return text;
-  return `${text} ${tokens.join(" ")}`;
+
+  const uniqueTokens = dedupeTokens(tokens).filter((token) => token !== text);
+  if (uniqueTokens.length === 0) return text;
+
+  return `${text} ${uniqueTokens.join(" ")}`;
 }
 
 /**
@@ -37,18 +43,13 @@ export function expandForFTS(text: string): string {
 export function buildFTSQuery(query: string): string {
   const trimmed = query.trim();
   if (!trimmed) return trimmed;
+  if (!containsHan(trimmed)) return escapeFTS5(trimmed);
 
   const tokens = segmentChinese(trimmed);
   if (tokens.length <= 1) return escapeFTS5(trimmed);
 
-  const parts = [escapeFTS5(trimmed), ...tokens.map(escapeFTS5)];
-  // Deduplicate while preserving order.
-  const seen = new Set<string>();
-  const unique = parts.filter((p) => {
-    if (seen.has(p)) return false;
-    seen.add(p);
-    return true;
-  });
+  const parts = [escapeFTS5(trimmed), ...dedupeTokens(tokens).map(escapeFTS5)];
+  const unique = dedupeTokens(parts);
   return unique.join(" OR ");
 }
 
@@ -59,6 +60,23 @@ export function buildFTSQuery(query: string): string {
  */
 function segmentChinese(text: string): string[] {
   return cut(text, true).filter((t) => t.trim().length > 0);
+}
+
+function dedupeTokens(tokens: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  for (const token of tokens) {
+    if (seen.has(token)) continue;
+    seen.add(token);
+    unique.push(token);
+  }
+
+  return unique;
+}
+
+function containsHan(text: string): boolean {
+  return /[\u3400-\u9fff]/u.test(text);
 }
 
 /**

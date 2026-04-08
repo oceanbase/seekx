@@ -4,12 +4,13 @@
   "workspaces": ["packages/*"],
   "scripts": {
     "test": "bun test --recursive packages/",
-    "typecheck": "tsc -b packages/core packages/cli",
+    "typecheck": "tsc --noEmit -p packages/core && tsc --noEmit -p packages/cli",
     "lint": "biome check packages/",
     "format": "biome format --write packages/"
   },
   "devDependencies": {
-    "@biomejs/biome": "latest",
+    "@biomejs/biome": "1.9.4",
+    "bun-types": "^1.3.11",
     "typescript": "^5.8.3"
   }
 }

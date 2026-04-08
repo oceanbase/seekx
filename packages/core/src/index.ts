@@ -3,7 +3,14 @@
 export { openDatabase, loadSqliteVec } from "./db.ts";
 export type { Database } from "./db.ts";
 export { Store } from "./store.ts";
-export type { RawResult, DocumentRow, CollectionRow, CollectionStats, ChunkRow, AddCollectionInput } from "./store.ts";
+export type {
+  RawResult,
+  DocumentRow,
+  CollectionRow,
+  CollectionStats,
+  ChunkRow,
+  AddCollectionInput,
+} from "./store.ts";
 
 export { SeekxClient, l2normalize } from "./client.ts";
 export type { RerankResult } from "./client.ts";

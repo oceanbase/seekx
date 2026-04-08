@@ -5,10 +5,10 @@
  * Exits with code 1 if no results, 2 if API degraded.
  */
 
-import type { Command } from "commander";
 import { hybridSearch } from "@seekx/core";
+import type { Command } from "commander";
 import { formatSearchResults } from "../formatter.ts";
-import { die, EXIT, openContext, warn } from "../utils.ts";
+import { EXIT, die, openContext, warn } from "../utils.ts";
 
 export function registerSearch(program: Command): void {
   program
@@ -62,7 +62,12 @@ export function registerSearch(program: Command): void {
           process.exit(EXIT.NO_RESULTS);
         }
 
-        formatSearchResults(results, { json: opts.json, files: opts.files, md: opts.md, expandedQueries });
+        formatSearchResults(results, {
+          json: opts.json,
+          files: opts.files,
+          md: opts.md,
+          expandedQueries,
+        });
         ctx.db.close();
       },
     );

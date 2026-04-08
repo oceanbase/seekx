@@ -22,7 +22,8 @@ describe("l2normalize", () => {
   test("normalized vector has magnitude 1", () => {
     const v = [3, 4];
     const n = l2normalize(v);
-    const mag = Math.sqrt(n[0]! * n[0]! + n[1]! * n[1]!);
+    const [x = 0, y = 0] = n;
+    const mag = Math.sqrt(x * x + y * y);
     expect(mag).toBeCloseTo(1, 6);
   });
 
@@ -36,7 +37,9 @@ describe("l2normalize", () => {
   test("zero vector stays zero (no NaN)", () => {
     const v = [0, 0, 0];
     const n = l2normalize(v);
-    n.forEach((x) => expect(isFinite(x)).toBe(true));
+    for (const x of n) {
+      expect(Number.isFinite(x)).toBe(true);
+    }
   });
 });
 

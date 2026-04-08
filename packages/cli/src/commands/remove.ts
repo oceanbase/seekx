@@ -5,7 +5,7 @@
  */
 
 import type { Command } from "commander";
-import { die, EXIT, openContext } from "../utils.ts";
+import { EXIT, die, openContext } from "../utils.ts";
 
 export function registerRemove(program: Command): void {
   program
@@ -27,7 +27,7 @@ export function registerRemove(program: Command): void {
         const { createInterface } = await import("node:readline");
         const rl = createInterface({ input: process.stdin, output: process.stdout });
         const answer = await new Promise<string>((resolve) =>
-          rl.question(`Remove collection '${collection}' (${col!.path})? [y/N] `, resolve),
+          rl.question(`Remove collection '${collection}' (${col.path})? [y/N] `, resolve),
         );
         rl.close();
         if (answer.toLowerCase() !== "y") {

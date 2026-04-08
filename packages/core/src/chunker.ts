@@ -51,10 +51,15 @@ export function chunkDocument(content: string, isMarkdown = true): Chunk[] {
 
   const lines: ParsedLine[] = content.split("\n").map((text, i) => {
     const m = isMarkdown ? HEADING_RE.exec(text) : null;
+    const headingLevel = m?.[1];
+    const headingText = m?.[2];
     return {
       num: i + 1,
       text,
-      heading: m ? { level: m[1]!.length, text: m[2]!.trim() } : null,
+      heading:
+        headingLevel && headingText
+          ? { level: headingLevel.length, text: headingText.trim() }
+          : null,
     };
   });
 
@@ -87,10 +92,9 @@ function buildMarkdownSegments(lines: ParsedLine[]): Segment[] {
     if (line.heading) {
       flush();
       // Pop shallower-or-equal headings before pushing the new one.
-      while (
-        headingStack.length > 0 &&
-        headingStack[headingStack.length - 1]!.level >= line.heading.level
-      ) {
+      while (headingStack.length > 0) {
+        const currentHeading = headingStack.at(-1);
+        if (!currentHeading || currentHeading.level < line.heading.level) break;
         headingStack.pop();
       }
       headingStack.push(line.heading);
@@ -136,11 +140,18 @@ function segmentsToChunks(segments: Segment[]): Chunk[] {
   let overlapTail = ""; // trailing text from previous chunk
 
   for (const seg of segments) {
-    const segText = seg.lines.map((l) => l.text).join("\n").trimEnd();
+    const segText = seg.lines
+      .map((l) => l.text)
+      .join("\n")
+      .trimEnd();
     if (!segText.trim()) continue;
 
-    const startLine = seg.lines[0]!.num;
-    const endLine = seg.lines[seg.lines.length - 1]!.num;
+    const start = seg.lines[0];
+    const end = seg.lines.at(-1);
+    if (!start || !end) continue;
+
+    const startLine = start.num;
+    const endLine = end.num;
     const body = overlapTail ? `${overlapTail}\n${segText}` : segText;
 
     if (body.length <= HARD_CAP_CHARS) {

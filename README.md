@@ -37,11 +37,19 @@ The system SQLite on macOS disables extension loading. For vector search (`sqlit
 
 ```bash
 brew install sqlite
-export SEEKX_SQLITE_PATH=/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib
-# Add to ~/.zshrc or ~/.bashrc to persist
 ```
 
-`seekx onboard` will guide you through this.
+seekx auto-detects standard Homebrew installs, including the usual Apple Silicon
+and Intel paths, and also falls back to `brew --prefix sqlite` when available.
+
+Only if auto-detection still fails, set:
+
+```bash
+export SEEKX_SQLITE_PATH="$(brew --prefix sqlite)/lib/libsqlite3.dylib"
+# Add to ~/.zshrc or ~/.bashrc to persist if needed
+```
+
+`seekx onboard` will check this and guide you through the fallback.
 
 ## Install
 

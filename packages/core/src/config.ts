@@ -46,7 +46,7 @@ interface WatchConfig {
   ignore?: string[];
 }
 
-interface RawConfig {
+export interface RawConfig {
   provider?: ProviderConfig;
   embed?: ServiceConfig;
   rerank?: ServiceConfig;
@@ -89,13 +89,11 @@ export interface ResolvedConfig {
 const DEFAULT_IGNORE = ["node_modules", ".git", "*.tmp", ".DS_Store"];
 
 function getConfigPath(): string {
-  return (
-    process.env["SEEKX_CONFIG_PATH"] ?? join(homedir(), ".seekx", "config.yml")
-  );
+  return process.env.SEEKX_CONFIG_PATH ?? join(homedir(), ".seekx", "config.yml");
 }
 
 function getDbPath(): string {
-  return process.env["SEEKX_DB_PATH"] ?? join(homedir(), ".seekx", "index.sqlite");
+  return process.env.SEEKX_DB_PATH ?? join(homedir(), ".seekx", "index.sqlite");
 }
 
 // ---------------------------------------------------------------------------
@@ -125,17 +123,15 @@ export function loadConfig(): ResolvedConfig | null {
 export function requireConfig(): ResolvedConfig {
   const cfg = loadConfig();
   if (!cfg) {
-    throw new Error(
-      "Config not found. Run 'seekx onboard' to set up seekx.",
-    );
+    throw new Error("Config not found. Run 'seekx onboard' to set up seekx.");
   }
   return cfg;
 }
 
 function resolveConfig(raw: RawConfig, configPath: string): ResolvedConfig {
   const p = raw.provider ?? {};
-  const envKey = process.env["SEEKX_API_KEY"];
-  const envBase = process.env["SEEKX_BASE_URL"];
+  const envKey = process.env.SEEKX_API_KEY;
+  const envBase = process.env.SEEKX_BASE_URL;
 
   function resolveService(
     svc: ServiceConfig | undefined,
@@ -224,12 +220,13 @@ export function setConfigKey(dotKey: string, value: string): void {
 
   const keys = dotKey.split(".");
   let node = raw as Record<string, unknown>;
-  for (let i = 0; i < keys.length - 1; i++) {
-    const k = keys[i]!;
+  for (const k of keys.slice(0, -1)) {
     if (typeof node[k] !== "object" || node[k] === null) node[k] = {};
     node = node[k] as Record<string, unknown>;
   }
-  node[keys[keys.length - 1]!] = value;
+  const leafKey = keys.at(-1);
+  if (!leafKey) return;
+  node[leafKey] = value;
 
   const dir = dirname(configPath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -268,7 +265,11 @@ export function dumpConfig(): string | null {
  * Write a single dotted key to a specific config file path.
  * Convenience wrapper over setConfigKey for use by the onboard wizard.
  */
-export async function writeConfigKey(configPath: string, dotKey: string, value: string): Promise<void> {
+export async function writeConfigKey(
+  configPath: string,
+  dotKey: string,
+  value: string,
+): Promise<void> {
   let raw: Record<string, unknown> = {};
   if (existsSync(configPath)) {
     try {
@@ -279,12 +280,13 @@ export async function writeConfigKey(configPath: string, dotKey: string, value: 
   }
   const keys = dotKey.split(".");
   let node = raw as Record<string, unknown>;
-  for (let i = 0; i < keys.length - 1; i++) {
-    const k = keys[i]!;
+  for (const k of keys.slice(0, -1)) {
     if (typeof node[k] !== "object" || node[k] === null) node[k] = {};
     node = node[k] as Record<string, unknown>;
   }
-  node[keys[keys.length - 1]!] = value;
+  const leafKey = keys.at(-1);
+  if (!leafKey) return;
+  node[leafKey] = value;
 
   const dir = dirname(configPath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });

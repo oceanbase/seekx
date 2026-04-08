@@ -18,8 +18,8 @@
 import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { extname, resolve } from "node:path";
-import type { SeekxClient } from "./client.ts";
 import { chunkDocument } from "./chunker.ts";
+import type { SeekxClient } from "./client.ts";
 import type { Store } from "./store.ts";
 import { expandForFTS } from "./tokenizer.ts";
 
@@ -202,7 +202,8 @@ export async function indexDirectory(
   const errors: Array<{ path: string; error: string }> = [];
 
   for (let i = 0; i < files.length; i++) {
-    const filePath = files[i]!;
+    const filePath = files[i];
+    if (!filePath) continue;
     onProgress?.(i + 1, files.length, filePath);
 
     const result = await indexFile(store, client, collection, filePath);
@@ -229,8 +230,13 @@ function sha1(content: string): string {
 
 function extractTitle(content: string, filePath: string): string | null {
   const m = /^#{1,4}\s+(.+)$/m.exec(content);
-  if (m) return m[1]!.trim();
-  const stem = filePath.split("/").pop()?.replace(/\.[^.]+$/, "") ?? null;
+  const markdownTitle = m?.[1]?.trim();
+  if (markdownTitle) return markdownTitle;
+  const stem =
+    filePath
+      .split("/")
+      .pop()
+      ?.replace(/\.[^.]+$/, "") ?? null;
   return stem ?? null;
 }
 

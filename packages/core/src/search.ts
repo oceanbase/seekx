@@ -76,8 +76,7 @@ export async function hybridSearch(
   const allRawResults: Array<{ results: RawResult[]; listId: string }> = [];
 
   if (mode === "hybrid" || mode === "bm25") {
-    for (let i = 0; i < expandedQueries.length; i++) {
-      const q = expandedQueries[i]!;
+    for (const [i, q] of expandedQueries.entries()) {
       const ftsQuery = buildFTSQuery(q);
       if (!ftsQuery) continue;
       try {
@@ -90,8 +89,7 @@ export async function hybridSearch(
   }
 
   if ((mode === "hybrid" || mode === "vector") && client) {
-    for (let i = 0; i < expandedQueries.length; i++) {
-      const q = expandedQueries[i]!;
+    for (const [i, q] of expandedQueries.entries()) {
       const vecs = await client.embed([q]);
       if (!vecs || !vecs[0]) {
         if (mode === "vector") warnings.push("Vector search unavailable: embed API failed.");
@@ -159,7 +157,8 @@ function rrfFuse(lists: RawResult[][]): RawResult[] {
     // Sort each list by score descending to assign ranks.
     const sorted = [...list].sort((a, b) => b.score - a.score);
     for (let rank = 0; rank < sorted.length; rank++) {
-      const raw = sorted[rank]!;
+      const raw = sorted[rank];
+      if (!raw) continue;
       const rrfContrib = 1 / (RRF_K + rank + 1);
       const existing = scoreMap.get(raw.chunk_id);
       if (existing) {
@@ -177,9 +176,9 @@ function rrfFuse(lists: RawResult[][]): RawResult[] {
 
 function applyRerank(candidates: RawResult[], reranked: RerankResult[]): RawResult[] {
   // Reranker returns indices into candidates + scores. Reorder accordingly.
-  return reranked.map(({ index, score }) => {
-    const raw = candidates[index] ?? candidates[0]!;
-    return { ...raw, score };
+  return reranked.flatMap(({ index, score }) => {
+    const raw = candidates[index];
+    return raw ? [{ ...raw, score }] : [];
   });
 }
 
@@ -192,7 +191,10 @@ function applyRerank(candidates: RawResult[], reranked: RerankResult[]): RawResu
  * first occurrence of any query term.
  */
 function extractSnippet(content: string, query: string, maxLen: number): string {
-  const terms = query.toLowerCase().split(/\s+/).filter((t) => t.length > 1);
+  const terms = query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t.length > 1);
   const lower = content.toLowerCase();
 
   let best = 0;

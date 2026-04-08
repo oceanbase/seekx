@@ -15,6 +15,15 @@ describe("expandForFTS", () => {
     expect(result).toBe("hello world");
   });
 
+  test("deduplicates repeated Chinese tokens while preserving the original text", () => {
+    const result = expandForFTS("数据库数据库");
+    expect(result).toContain("数据库数据库");
+
+    const parts = result.split(" ");
+    const unique = new Set(parts);
+    expect(unique.size).toBe(parts.length);
+  });
+
   test("mixed Chinese + English retains original", () => {
     const result = expandForFTS("search引擎");
     expect(result).toContain("search引擎");
@@ -25,6 +34,11 @@ describe("buildFTSQuery", () => {
   test("single ASCII word → quoted", () => {
     const q = buildFTSQuery("database");
     expect(q).toBe('"database"');
+  });
+
+  test("multi-word ASCII query stays a quoted phrase", () => {
+    const q = buildFTSQuery("hello world");
+    expect(q).toBe('"hello world"');
   });
 
   test("multi-token Chinese query → OR expression", () => {

@@ -29,7 +29,7 @@ export function registerMcp(program: Command): void {
       const server = new McpServer({
         name: "seekx",
         version: "0.1.0",
-        instructions: `seekx — context search engine. ${totalDocs} documents indexed across ${cols.length} collection(s): ${cols.map((c) => c.name).join(", ")}.`,
+        description: `seekx — context search engine. ${totalDocs} documents indexed across ${cols.length} collection(s): ${cols.map((c) => c.name).join(", ")}.`,
       });
 
       // Tool: search
@@ -72,36 +72,35 @@ export function registerMcp(program: Command): void {
       );
 
       // Tool: list
-      server.tool(
-        "list",
-        "List all registered collections.",
-        {},
-        async () => {
-          const collections = store.listCollections().map((c) => ({
-            ...c,
-            ...store.collectionStats(c.name),
-          }));
-          return { content: [{ type: "text" as const, text: JSON.stringify(collections, null, 2) }] };
-        },
-      );
+      server.tool("list", "List all registered collections.", {}, async () => {
+        const collections = store.listCollections().map((c) => ({
+          ...c,
+          ...store.collectionStats(c.name),
+        }));
+        return { content: [{ type: "text" as const, text: JSON.stringify(collections, null, 2) }] };
+      });
 
       // Tool: status
-      server.tool(
-        "status",
-        "Report index health and statistics.",
-        {},
-        async () => {
-          const collections = store.listCollections();
-          const totalChunks = collections.reduce((s, c) => s + store.collectionStats(c.name).chunkCount, 0);
-          const docs = collections.reduce((s, c) => s + store.collectionStats(c.name).docCount, 0);
-          return {
-            content: [{
+      server.tool("status", "Report index health and statistics.", {}, async () => {
+        const collections = store.listCollections();
+        const totalChunks = collections.reduce(
+          (s, c) => s + store.collectionStats(c.name).chunkCount,
+          0,
+        );
+        const docs = collections.reduce((s, c) => s + store.collectionStats(c.name).docCount, 0);
+        return {
+          content: [
+            {
               type: "text" as const,
-              text: JSON.stringify({ documents: docs, chunks: totalChunks, vecLoaded: ctx.vecLoaded }),
-            }],
-          };
-        },
-      );
+              text: JSON.stringify({
+                documents: docs,
+                chunks: totalChunks,
+                vecLoaded: ctx.vecLoaded,
+              }),
+            },
+          ],
+        };
+      });
 
       const transport = new StdioServerTransport();
       await server.connect(transport);

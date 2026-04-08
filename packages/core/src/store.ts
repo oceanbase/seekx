@@ -178,12 +178,12 @@ const CURRENT_SCHEMA_VERSION = 1;
 
 function runMigrations(db: Database): void {
   // meta table may not exist yet on first run; create it first.
-  db.exec(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
+  db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);");
 
-  const row = db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as
-    | { value: string }
-    | null;
-  const current = row ? parseInt(row.value, 10) : 0;
+  const row = db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as {
+    value: string;
+  } | null;
+  const current = row ? Number.parseInt(row.value, 10) : 0;
 
   for (let v = current + 1; v <= CURRENT_SCHEMA_VERSION; v++) {
     const migration = MIGRATIONS[v];
@@ -215,7 +215,7 @@ export class Store {
 
     // Read previously stored embed dim if any.
     const dim = this.getMeta("embed_dim");
-    if (dim) this.vecDim = parseInt(dim, 10);
+    if (dim) this.vecDim = Number.parseInt(dim, 10);
   }
 
   // -------------------------------------------------------------------------
@@ -230,10 +230,9 @@ export class Store {
     if (!this.vecLoaded) return false;
 
     const storedDim = this.getMeta("embed_dim");
-    if (storedDim && parseInt(storedDim, 10) !== dim) {
+    if (storedDim && Number.parseInt(storedDim, 10) !== dim) {
       throw new Error(
-        `Embed dimension mismatch: stored=${storedDim}, new=${dim}. ` +
-          `Run 'seekx reindex <collection>' after changing the embed model.`,
+        `Embed dimension mismatch: stored=${storedDim}, new=${dim}. Run 'seekx reindex <collection>' after changing the embed model.`,
       );
     }
 
@@ -291,7 +290,9 @@ export class Store {
   getCollection(name: string): CollectionRow | null {
     return (
       (this.db
-        .prepare("SELECT name, path, pattern, ignore_json, created_at FROM collections WHERE name = ?")
+        .prepare(
+          "SELECT name, path, pattern, ignore_json, created_at FROM collections WHERE name = ?",
+        )
         .get(name) as CollectionRow | null) ?? null
     );
   }
@@ -299,17 +300,15 @@ export class Store {
   removeCollection(name: string): boolean {
     // Deletes cascade to documents → chunks. FTS rows must be removed first.
     // We do a manual FTS cleanup before deleting documents.
-    const docIds = this.db
-      .prepare("SELECT id FROM documents WHERE collection = ?")
-      .all(name) as { id: number }[];
+    const docIds = this.db.prepare("SELECT id FROM documents WHERE collection = ?").all(name) as {
+      id: number;
+    }[];
 
     for (const { id } of docIds) {
       this._deleteFTSForDoc(id);
     }
 
-    const result = this.db
-      .prepare("DELETE FROM collections WHERE name = ?")
-      .run(name);
+    const result = this.db.prepare("DELETE FROM collections WHERE name = ?").run(name);
     return result.changes > 0;
   }
 
@@ -357,9 +356,9 @@ export class Store {
 
   private _deleteFTSForDoc(docId: number): void {
     // Fetch chunk ids to delete FTS rows by rowid (O(1) per row).
-    const chunkIds = this.db
-      .prepare("SELECT id FROM chunks WHERE doc_id = ?")
-      .all(docId) as { id: number }[];
+    const chunkIds = this.db.prepare("SELECT id FROM chunks WHERE doc_id = ?").all(docId) as {
+      id: number;
+    }[];
     const stmt = this.db.prepare("DELETE FROM fts WHERE rowid = ?");
     for (const { id } of chunkIds) {
       stmt.run(id);
@@ -402,8 +401,7 @@ export class Store {
 
   getChunkById(chunkId: number): ChunkRow | null {
     return (
-      (this.db.prepare("SELECT * FROM chunks WHERE id = ?").get(chunkId) as ChunkRow | null) ??
-      null
+      (this.db.prepare("SELECT * FROM chunks WHERE id = ?").get(chunkId) as ChunkRow | null) ?? null
     );
   }
 
@@ -517,16 +515,14 @@ export class Store {
   // -------------------------------------------------------------------------
 
   getMeta(key: string): string | null {
-    const row = this.db
-      .prepare("SELECT value FROM meta WHERE key = ?")
-      .get(key) as { value: string } | null;
+    const row = this.db.prepare("SELECT value FROM meta WHERE key = ?").get(key) as {
+      value: string;
+    } | null;
     return row?.value ?? null;
   }
 
   setMeta(key: string, value: string): void {
-    this.db
-      .prepare("INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)")
-      .run(key, value);
+    this.db.prepare("INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)").run(key, value);
   }
 
   // -------------------------------------------------------------------------
@@ -602,8 +598,8 @@ export class Store {
 
   /** Decode a short hex docid (e.g. "a3f2b1") to an integer document id. */
   decodeDocid(shortId: string): number | null {
-    const n = parseInt(shortId, 16);
-    return isNaN(n) ? null : n;
+    const n = Number.parseInt(shortId, 16);
+    return Number.isNaN(n) ? null : n;
   }
 
   /** Encode an integer document id to a 6-char hex string. */

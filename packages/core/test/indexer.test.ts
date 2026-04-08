@@ -10,9 +10,9 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDatabase } from "../src/db.ts";
-import { indexFile, type IndexFileStatus } from "../src/indexer.ts";
-import { Store } from "../src/store.ts";
 import type { Database } from "../src/db.ts";
+import { type IndexFileStatus, indexFile } from "../src/indexer.ts";
+import { Store } from "../src/store.ts";
 
 // ---------------------------------------------------------------------------
 // Embed stub — always returns null (no embedding, BM25-only mode)
@@ -64,7 +64,8 @@ describe("indexFile — new file", () => {
     await indexFile(store, NULL_CLIENT, "test", p);
     const doc = store.findDocumentByPath("test", p);
     expect(doc).not.toBeNull();
-    const chunks = store.getChunksByDocId(doc!.id);
+    if (!doc) throw new Error("Expected indexed document to exist");
+    const chunks = store.getChunksByDocId(doc.id);
     expect(chunks.length).toBeGreaterThan(0);
   });
 
@@ -102,7 +103,8 @@ describe("indexFile — change detection (hash)", () => {
 
     // Old chunks should be replaced with new ones.
     const doc2 = store.findDocumentByPath("test", p);
-    const chunks = store.getChunksByDocId(doc2!.id);
+    if (!doc2) throw new Error("Expected re-indexed document to exist");
+    const chunks = store.getChunksByDocId(doc2.id);
     expect(chunks.some((c) => c.content.includes("Version 2"))).toBe(true);
   });
 });

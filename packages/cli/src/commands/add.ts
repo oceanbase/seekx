@@ -7,9 +7,9 @@
 
 import { existsSync, realpathSync } from "node:fs";
 import { basename, resolve } from "node:path";
-import type { Command } from "commander";
 import { indexDirectory } from "@seekx/core";
-import { die, EXIT, openContext, warn } from "../utils.ts";
+import type { Command } from "commander";
+import { EXIT, die, openContext, warn } from "../utils.ts";
 
 export function registerAdd(program: Command): void {
   program

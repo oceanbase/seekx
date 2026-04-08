@@ -9,9 +9,9 @@
 
 import { EventEmitter } from "node:events";
 import { resolve } from "node:path";
-import { watch, type FSWatcher } from "chokidar";
+import { type FSWatcher, watch } from "chokidar";
 import type { SeekxClient } from "./client.ts";
-import { indexFile, type IndexFileResult } from "./indexer.ts";
+import { type IndexFileResult, indexFile } from "./indexer.ts";
 import type { Store } from "./store.ts";
 
 export type WatcherEvent =
@@ -27,11 +27,6 @@ export interface WatchOptions {
 export interface CollectionWatch {
   collection: string;
   rootPath: string;
-}
-
-export declare interface Watcher {
-  on(event: "event", listener: (e: WatcherEvent) => void): this;
-  on(event: "ready", listener: () => void): this;
 }
 
 export class Watcher extends EventEmitter {
@@ -82,8 +77,9 @@ export class Watcher extends EventEmitter {
   }
 
   private handleChange(absPath: string): void {
-    if (this.debounceMap.has(absPath)) {
-      clearTimeout(this.debounceMap.get(absPath)!);
+    const existingTimer = this.debounceMap.get(absPath);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
     }
     const timer = setTimeout(() => {
       this.debounceMap.delete(absPath);

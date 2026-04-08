@@ -125,7 +125,7 @@ export class SeekxClient {
       "You are a search query expansion assistant. " +
       "Given a user query, produce 2 alternative search queries that capture the same intent " +
       "using different vocabulary. Output ONLY a JSON array of strings, no explanation. " +
-      "Example input: \"k8s pod crash\" " +
+      'Example input: "k8s pod crash" ' +
       'Example output: ["kubernetes pod CrashLoopBackOff debug", "容器启动失败 排查步骤 日志"]';
 
     try {
@@ -181,9 +181,15 @@ export class SeekxClient {
     if (this.embed_cfg.baseUrl) {
       const t = Date.now();
       const vecs = await this.embed(["health check"]);
-      results.embed = vecs
-        ? { ok: true, latencyMs: Date.now() - t, dim: vecs[0]?.length }
-        : { ok: false, latencyMs: Date.now() - t };
+      if (vecs) {
+        const dim = vecs[0]?.length;
+        results.embed =
+          dim === undefined
+            ? { ok: true, latencyMs: Date.now() - t }
+            : { ok: true, latencyMs: Date.now() - t, dim };
+      } else {
+        results.embed = { ok: false, latencyMs: Date.now() - t };
+      }
     }
 
     // Rerank check

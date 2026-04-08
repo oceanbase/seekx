@@ -5,10 +5,10 @@
  * Useful for semantic similarity without lexical matching.
  */
 
-import type { Command } from "commander";
 import { hybridSearch } from "@seekx/core";
+import type { Command } from "commander";
 import { formatSearchResults } from "../formatter.ts";
-import { die, EXIT, openContext, warn } from "../utils.ts";
+import { EXIT, die, openContext, warn } from "../utils.ts";
 
 export function registerVsearch(program: Command): void {
   program

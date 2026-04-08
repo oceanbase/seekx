@@ -5,9 +5,9 @@
  * On SIGINT/SIGTERM: drains pending debounces and closes the database.
  */
 
-import type { Command } from "commander";
 import { Watcher } from "@seekx/core";
-import { die, EXIT, openContext, warn } from "../utils.ts";
+import type { Command } from "commander";
+import { EXIT, die, openContext, warn } from "../utils.ts";
 
 export function registerWatch(program: Command): void {
   program
@@ -19,12 +19,14 @@ export function registerWatch(program: Command): void {
       const { store, client, cfg } = ctx;
 
       const cols = collection
-        ? [store.getCollection(collection)].filter(Boolean)
+        ? [store.getCollection(collection)].flatMap((col) => (col ? [col] : []))
         : store.listCollections();
 
       if (cols.length === 0) {
         die(
-          collection ? `Collection '${collection}' not found.` : "No collections registered. Use 'seekx add <path>' first.",
+          collection
+            ? `Collection '${collection}' not found.`
+            : "No collections registered. Use 'seekx add <path>' first.",
           EXIT.USER_ERROR,
           opts.json,
         );
@@ -33,13 +35,13 @@ export function registerWatch(program: Command): void {
       const watcher = new Watcher(
         store,
         client,
-        cols.map((c) => ({ collection: c!.name, rootPath: c!.path })),
+        cols.map((c) => ({ collection: c.name, rootPath: c.path })),
         { debounceMs: cfg.watch.debounceMs, ignore: cfg.watch.ignore },
       );
 
       watcher.on("ready", () => {
         if (opts.json) {
-          console.log(JSON.stringify({ type: "ready", collections: cols.map((c) => c!.name) }));
+          console.log(JSON.stringify({ type: "ready", collections: cols.map((c) => c.name) }));
         } else {
           console.log(`Watching ${cols.length} collection(s). Press Ctrl+C to stop.`);
         }
@@ -54,7 +56,9 @@ export function registerWatch(program: Command): void {
         if (e.type === "indexed") {
           const r = e.result;
           if (r.status === "indexed") {
-            console.log(`  + indexed  ${r.path} (${r.chunkCount} chunks, ${r.embeddedCount} embedded)`);
+            console.log(
+              `  + indexed  ${r.path} (${r.chunkCount} chunks, ${r.embeddedCount} embedded)`,
+            );
           } else if (r.status === "mtime_only") {
             console.log(`  ~ mtime    ${r.path}`);
           }

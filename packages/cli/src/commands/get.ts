@@ -7,7 +7,7 @@
 
 import type { Command } from "commander";
 import { formatChunk } from "../formatter.ts";
-import { die, EXIT, openContext } from "../utils.ts";
+import { EXIT, die, openContext } from "../utils.ts";
 
 export function registerGet(program: Command): void {
   program
@@ -24,13 +24,13 @@ export function registerGet(program: Command): void {
         die(`Invalid document id: ${docid}`, EXIT.USER_ERROR, opts.json);
       }
 
-      const doc = store.getDocumentById(numId!);
+      const doc = store.getDocumentById(numId);
       if (!doc) {
         die(`Document not found: ${docid}`, EXIT.USER_ERROR, opts.json);
       }
 
       // doc.chunks is pre-populated by getDocumentById.
-      const { chunks, ...docMeta } = doc!;
+      const { chunks, ...docMeta } = doc;
 
       if (opts.json) {
         console.log(JSON.stringify({ ...docMeta, chunks }, null, 2));

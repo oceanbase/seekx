@@ -10,10 +10,10 @@
  *   - Aliases as "q".
  */
 
-import type { Command } from "commander";
 import { hybridSearch } from "@seekx/core";
+import type { Command } from "commander";
 import { formatSearchResults } from "../formatter.ts";
-import { die, EXIT, openContext, warn } from "../utils.ts";
+import { EXIT, die, openContext, warn } from "../utils.ts";
 
 export function registerQuery(program: Command): void {
   program

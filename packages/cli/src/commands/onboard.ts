@@ -15,8 +15,8 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { SeekxClient, loadSqliteVec, openDatabase, writeConfigKey } from "@seekx/core";
 import type { Command } from "commander";
-import { loadSqliteVec, openDatabase, SeekxClient, writeConfigKey } from "@seekx/core";
 
 const CONFIG_DIR = join(homedir(), ".seekx");
 const CONFIG_PATH = join(CONFIG_DIR, "config.yml");
@@ -102,7 +102,9 @@ export function registerOnboard(program: Command): void {
       // ---- 1. Check Bun version ----
       const bunVersion = process.versions.bun ?? "unknown";
       const bunOk = bunVersion !== "unknown";
-      console.log(`  Bun runtime   ${bunOk ? "\x1b[32m✓\x1b[0m" : "\x1b[31m✗\x1b[0m"}  ${bunVersion}`);
+      console.log(
+        `  Bun runtime   ${bunOk ? "\x1b[32m✓\x1b[0m" : "\x1b[31m✗\x1b[0m"}  ${bunVersion}`,
+      );
 
       // ---- 2. Check sqlite-vec ----
       if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
@@ -117,15 +119,16 @@ export function registerOnboard(program: Command): void {
 
       if (!vecLoaded && process.platform === "darwin") {
         console.log(`
-  \x1b[33mVector search requires sqlite-vec, which needs a newer SQLite from Homebrew.\x1b[0m
+  \x1b[33mVector search requires sqlite-vec, which needs a SQLite build with extension loading.\x1b[0m
   Run:
     brew install sqlite
-  Then add to your shell profile:
-    export SEEKX_SQLITE_PATH=/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib
+  seekx will auto-detect standard Homebrew installs.
+  If detection still fails, set:
+    export SEEKX_SQLITE_PATH="$(brew --prefix sqlite)/lib/libsqlite3.dylib"
 `);
         const cont = await confirm({ message: "Continue without vector search?" });
         if (!cont) {
-          console.log("Setup cancelled. Brew-install SQLite and re-run 'seekx onboard'.");
+          console.log("Setup cancelled. Install SQLite and re-run 'seekx onboard'.");
           process.exit(0);
         }
       }
@@ -141,7 +144,10 @@ export function registerOnboard(program: Command): void {
         })),
       });
 
-      const preset = PRESETS[providerKey]!;
+      const preset = PRESETS[providerKey];
+      if (!preset) {
+        throw new Error(`Unknown provider preset: ${providerKey}`);
+      }
       const isCustom = providerKey === "custom";
 
       // ---- 4. Collect credentials ----

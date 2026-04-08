@@ -18,5 +18,8 @@ bun.lockb
 # Test artifacts
 coverage/
 
+# Local tool downloads
+.tmp-tools/
+
 # Project-local planning docs (not tracked)
 seekx-plan.md

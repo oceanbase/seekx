@@ -16,7 +16,12 @@ import type { SearchResult } from "@seekx/core";
 
 export function formatSearchResults(
   results: SearchResult[],
-  opts: { json?: boolean; files?: boolean; md?: boolean; expandedQueries?: string[] },
+  opts: {
+    json?: boolean | undefined;
+    files?: boolean | undefined;
+    md?: boolean | undefined;
+    expandedQueries?: string[] | undefined;
+  },
 ): void {
   if (opts.json) {
     console.log(JSON.stringify({ results, expandedQueries: opts.expandedQueries ?? [] }, null, 2));
@@ -74,7 +79,7 @@ export interface CollectionRow {
 
 export function formatCollections(
   rows: CollectionRow[],
-  opts: { json?: boolean } = {},
+  opts: { json?: boolean | undefined } = {},
 ): void {
   if (opts.json) {
     console.log(JSON.stringify(rows, null, 2));
@@ -121,7 +126,7 @@ export interface StatusData {
   }>;
 }
 
-export function formatStatus(data: StatusData, opts: { json?: boolean } = {}): void {
+export function formatStatus(data: StatusData, opts: { json?: boolean | undefined } = {}): void {
   if (opts.json) {
     console.log(JSON.stringify(data, null, 2));
     return;
@@ -141,11 +146,11 @@ export function formatStatus(data: StatusData, opts: { json?: boolean } = {}): v
   }
 
   const embeddedPct =
-    data.totalChunks > 0
-      ? `${Math.round((data.embeddedChunks / data.totalChunks) * 100)}%`
-      : "—";
+    data.totalChunks > 0 ? `${Math.round((data.embeddedChunks / data.totalChunks) * 100)}%` : "—";
   console.log(`  documents    ${data.totalDocuments}`);
-  console.log(`  chunks       ${data.totalChunks}  (embedded: ${data.embeddedChunks} / ${embeddedPct})`);
+  console.log(
+    `  chunks       ${data.totalChunks}  (embedded: ${data.embeddedChunks} / ${embeddedPct})`,
+  );
   console.log();
 
   if (data.collections.length === 0) {
@@ -170,8 +175,14 @@ export function formatStatus(data: StatusData, opts: { json?: boolean } = {}): v
 // ---------------------------------------------------------------------------
 
 export function formatChunk(
-  chunk: { file: string; title: string | null; content: string; start_line: number; end_line: number },
-  opts: { json?: boolean; md?: boolean } = {},
+  chunk: {
+    file: string;
+    title: string | null;
+    content: string;
+    start_line: number;
+    end_line: number;
+  },
+  opts: { json?: boolean | undefined; md?: boolean | undefined } = {},
 ): void {
   if (opts.json) {
     console.log(JSON.stringify(chunk, null, 2));

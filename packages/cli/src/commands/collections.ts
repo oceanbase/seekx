@@ -21,7 +21,12 @@ export function registerCollections(program: Command): void {
       const cols = store.listCollections();
       const rows = cols.map((c) => {
         const stats = store.collectionStats(c.name);
-        return { name: c.name, path: c.path, docCount: stats.docCount, chunkCount: stats.chunkCount };
+        return {
+          name: c.name,
+          path: c.path,
+          docCount: stats.docCount,
+          chunkCount: stats.chunkCount,
+        };
       });
 
       formatCollections(rows, { json: opts.json });

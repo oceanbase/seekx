@@ -4,7 +4,14 @@
 
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { loadSqliteVec, openDatabase, requireConfig, SeekxClient, Store, isEmbedConfigured } from "@seekx/core";
+import {
+  SeekxClient,
+  Store,
+  isEmbedConfigured,
+  loadSqliteVec,
+  openDatabase,
+  requireConfig,
+} from "@seekx/core";
 import type { Database, ResolvedConfig } from "@seekx/core";
 
 // ---------------------------------------------------------------------------
@@ -35,32 +42,20 @@ export interface AppContext {
  * Open the store and build the AppContext used by most commands.
  * Exits with EXIT.INTERNAL_ERROR on fatal failures.
  */
-export async function openContext(opts: { json?: boolean } = {}): Promise<AppContext> {
-  let cfg: ResolvedConfig;
-  try {
-    cfg = requireConfig();
-  } catch (e) {
-    die(String(e), EXIT.INTERNAL_ERROR, opts.json);
-  }
+export async function openContext(opts: { json?: boolean | undefined } = {}): Promise<AppContext> {
+  const cfg = loadRequiredConfig(opts.json);
 
-  const dbDir = dirname(cfg!.dbPath);
+  const dbDir = dirname(cfg.dbPath);
   if (!existsSync(dbDir)) mkdirSync(dbDir, { recursive: true });
 
-  let db: Database;
-  try {
-    db = await openDatabase(cfg!.dbPath);
-  } catch (e) {
-    die(`Failed to open database: ${e}`, EXIT.INTERNAL_ERROR, opts.json);
-  }
+  const db = await openDatabaseOrDie(cfg.dbPath, opts.json);
 
-  const vecLoaded = await loadSqliteVec(db!);
-  const store = new Store(db!, vecLoaded);
+  const vecLoaded = await loadSqliteVec(db);
+  const store = new Store(db, vecLoaded);
 
-  const client = isEmbedConfigured(cfg!)
-    ? new SeekxClient(cfg!.embed, cfg!.rerank, cfg!.expand)
-    : null;
+  const client = isEmbedConfigured(cfg) ? new SeekxClient(cfg.embed, cfg.rerank, cfg.expand) : null;
 
-  return { cfg: cfg!, db: db!, store, client, vecLoaded };
+  return { cfg, db, store, client, vecLoaded };
 }
 
 // ---------------------------------------------------------------------------
@@ -71,7 +66,11 @@ export function printJson(data: unknown): void {
   console.log(JSON.stringify(data, null, 2));
 }
 
-export function die(msg: string, code = EXIT.INTERNAL_ERROR, asJson?: boolean): never {
+export function die(
+  msg: string,
+  code: number = EXIT.INTERNAL_ERROR,
+  asJson?: boolean | undefined,
+): never {
   if (asJson) {
     printJson({ error: msg });
   } else {
@@ -82,4 +81,20 @@ export function die(msg: string, code = EXIT.INTERNAL_ERROR, asJson?: boolean): 
 
 export function warn(msg: string): void {
   console.error(`\x1b[33mwarn:\x1b[0m ${msg}`);
+}
+
+function loadRequiredConfig(asJson?: boolean | undefined): ResolvedConfig {
+  try {
+    return requireConfig();
+  } catch (e) {
+    die(String(e), EXIT.INTERNAL_ERROR, asJson);
+  }
+}
+
+async function openDatabaseOrDie(dbPath: string, asJson?: boolean | undefined): Promise<Database> {
+  try {
+    return await openDatabase(dbPath);
+  } catch (e) {
+    die(`Failed to open database: ${e}`, EXIT.INTERNAL_ERROR, asJson);
+  }
 }

@@ -43,9 +43,9 @@ describe("chunkDocument — markdown", () => {
   test("embeddingContent prepends heading_path", () => {
     const chunks = chunkDocument(MD_SIMPLE);
     const withH = chunks.find((c) => c.heading_path !== null);
-    if (withH) {
-      expect(withH.embeddingContent).toContain(withH.heading_path!);
-    }
+    expect(withH?.heading_path).not.toBeNull();
+    if (!withH?.heading_path) throw new Error("Expected a heading-aware chunk");
+    expect(withH.embeddingContent).toContain(withH.heading_path);
   });
 
   test("long document produces multiple chunks", () => {
@@ -55,7 +55,9 @@ describe("chunkDocument — markdown", () => {
 
   test("no chunk has empty content", () => {
     const chunks = chunkDocument(MD_SIMPLE);
-    chunks.forEach((c) => expect(c.content.length).toBeGreaterThan(0));
+    for (const chunk of chunks) {
+      expect(chunk.content.length).toBeGreaterThan(0);
+    }
   });
 
   test("start_line < end_line for multi-line chunks", () => {
@@ -74,6 +76,8 @@ describe("chunkDocument — plain text", () => {
 
   test("heading_path is null for plain text", () => {
     const chunks = chunkDocument("Hello world.\n\nAnother line.", false);
-    chunks.forEach((c) => expect(c.heading_path).toBeNull());
+    for (const chunk of chunks) {
+      expect(chunk.heading_path).toBeNull();
+    }
   });
 });
