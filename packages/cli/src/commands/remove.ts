@@ -5,7 +5,7 @@
  */
 
 import type { Command } from "commander";
-import { EXIT, die, openContext } from "../utils.ts";
+import { EXIT, die, openContext, resolveJson } from "../utils.ts";
 
 export function registerRemove(program: Command): void {
   program
@@ -14,16 +14,17 @@ export function registerRemove(program: Command): void {
     .description("Remove a collection and all its indexed data")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("--json", "Machine-readable output")
-    .action(async (collection: string, opts: { yes?: boolean; json?: boolean }) => {
-      const ctx = await openContext({ json: opts.json });
+    .action(async (collection: string, opts: { yes?: boolean; json?: boolean }, command: Command) => {
+      const json = resolveJson(opts, command);
+      const ctx = await openContext({ json });
       const { store } = ctx;
 
       const col = store.getCollection(collection);
       if (!col) {
-        die(`Collection '${collection}' not found.`, EXIT.USER_ERROR, opts.json);
+        die(`Collection '${collection}' not found.`, EXIT.USER_ERROR, json);
       }
 
-      if (!opts.yes && !opts.json) {
+      if (!opts.yes && !json) {
         const { createInterface } = await import("node:readline");
         const rl = createInterface({ input: process.stdin, output: process.stdout });
         const answer = await new Promise<string>((resolve) =>
@@ -39,7 +40,7 @@ export function registerRemove(program: Command): void {
 
       store.removeCollection(collection);
 
-      if (opts.json) {
+      if (json) {
         console.log(JSON.stringify({ removed: collection }));
       } else {
         console.log(`Collection '${collection}' removed.`);

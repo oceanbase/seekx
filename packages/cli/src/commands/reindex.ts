@@ -8,7 +8,7 @@
 import { basename } from "node:path";
 import { indexDirectory } from "@seekx/core";
 import type { Command } from "commander";
-import { EXIT, die, openContext, warn } from "../utils.ts";
+import { EXIT, die, openContext, resolveJson, warn } from "../utils.ts";
 
 export function registerReindex(program: Command): void {
   program
@@ -17,13 +17,14 @@ export function registerReindex(program: Command): void {
     .option("--reset-vec", "Drop and recreate the vector table (required on embed model change)")
     .option("--json", "Machine-readable output")
     .action(
-      async (collection: string | undefined, opts: { resetVec?: boolean; json?: boolean }) => {
-        const ctx = await openContext({ json: opts.json });
+      async (collection: string | undefined, opts: { resetVec?: boolean; json?: boolean }, command: Command) => {
+        const json = resolveJson(opts, command);
+        const ctx = await openContext({ json });
         const { store, client, cfg } = ctx;
 
         if (opts.resetVec) {
           store.resetVecTable();
-          if (!opts.json) console.log("Vector table reset.");
+          if (!json) console.log("Vector table reset.");
         }
 
         const cols = collection
@@ -34,7 +35,7 @@ export function registerReindex(program: Command): void {
           die(
             collection ? `Collection '${collection}' not found.` : "No collections registered.",
             EXIT.USER_ERROR,
-            opts.json,
+            json,
           );
         }
 
@@ -42,7 +43,7 @@ export function registerReindex(program: Command): void {
 
         for (const col of cols) {
           if (!col) continue;
-          if (!opts.json) console.log(`Re-indexing '${col.name}'…`);
+          if (!json) console.log(`Re-indexing '${col.name}'…`);
 
           // Delete all existing docs for the collection so indexFile re-creates them.
           store.deleteAllDocuments(col.name);
@@ -57,14 +58,14 @@ export function registerReindex(program: Command): void {
             cfg.watch.ignore,
             (indexed, total, filePath) => {
               const now = Date.now();
-              if (!opts.json && now - lastPrint > 500) {
+              if (!json && now - lastPrint > 500) {
                 lastPrint = now;
                 process.stdout.write(`\r  ${indexed}/${total} — ${basename(filePath)}          `);
               }
             },
           );
 
-          if (!opts.json) process.stdout.write("\n");
+          if (!json) process.stdout.write("\n");
 
           if (result.errors.length > 0) {
             for (const e of result.errors) warn(`  ${e.path}: ${e.error}`);
@@ -73,7 +74,7 @@ export function registerReindex(program: Command): void {
           summary.push({ name: col.name, indexed: result.indexed, errors: result.errors.length });
         }
 
-        if (opts.json) {
+        if (json) {
           console.log(JSON.stringify(summary, null, 2));
         } else {
           for (const s of summary) {

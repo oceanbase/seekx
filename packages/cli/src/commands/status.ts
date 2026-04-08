@@ -9,15 +9,16 @@
 import { isEmbedConfigured } from "@seekx/core";
 import type { Command } from "commander";
 import { formatStatus } from "../formatter.ts";
-import { openContext } from "../utils.ts";
+import { openContext, resolveJson } from "../utils.ts";
 
 export function registerStatus(program: Command): void {
   program
     .command("status")
     .description("Show index statistics and environment health")
     .option("--json", "Machine-readable output")
-    .action(async (opts: { json?: boolean }) => {
-      const ctx = await openContext({ json: opts.json });
+    .action(async (opts: { json?: boolean }, command: Command) => {
+      const json = resolveJson(opts, command);
+      const ctx = await openContext({ json });
       const { store, client, cfg } = ctx;
 
       let embedOk: boolean | null = null;
@@ -30,7 +31,7 @@ export function registerStatus(program: Command): void {
       // embed model name, dim, and per-collection last_indexed timestamps.
       const status = store.getStatus();
 
-      formatStatus({ ...status, dbPath: cfg.dbPath, embedOk }, { json: opts.json });
+      formatStatus({ ...status, dbPath: cfg.dbPath, embedOk }, { json });
 
       ctx.db.close();
     });

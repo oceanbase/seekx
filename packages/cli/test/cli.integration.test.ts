@@ -122,6 +122,12 @@ describe("CLI integration", () => {
     expect(collectionsResult.stdout).toContain("docs");
     expect(collectionsResult.stdout).toContain(indexedDocsPath);
 
+    const collectionsJson = await runCli(["collections", "--json"]);
+    expect(collectionsJson.exitCode).toBe(0);
+    expect(collectionsJson.stdout.trim().startsWith("[")).toBe(true);
+    const collectionRows = JSON.parse(collectionsJson.stdout.trim()) as Array<{ name: string }>;
+    expect(collectionRows.some((r) => r.name === "docs")).toBe(true);
+
     const statusResult = await runCli(["status"]);
     expect(statusResult.exitCode).toBe(0);
     expect(statusResult.stdout).toContain("seekx status");

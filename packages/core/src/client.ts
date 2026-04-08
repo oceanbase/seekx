@@ -102,12 +102,35 @@ export class SeekxClient {
       }
 
       const data = (await res.json()) as {
-        results: Array<{ index: number; relevance_score: number }>;
+        results: Array<{
+          index?: number;
+          relevance_score?: number;
+          score?: number;
+          document?: string;
+        }>;
       };
 
-      return data.results
-        .map((r) => ({ index: r.index, score: r.relevance_score }))
-        .sort((a, b) => b.score - a.score);
+      const mapped: RerankResult[] = data.results
+        .map((r) => {
+          let index = -1;
+          if (typeof r.index === "number" && Number.isFinite(r.index)) {
+            index = r.index;
+          } else if (typeof r.document === "string") {
+            index = documents.indexOf(r.document);
+          }
+          const score = r.relevance_score ?? r.score ?? 0;
+          return { index, score };
+        })
+        .filter((r) => r.index >= 0 && r.index < documents.length);
+
+      if (mapped.length === 0 && data.results.length > 0) {
+        console.error(
+          `[seekx] rerank: could not map results to input documents (missing index/document fields).`,
+        );
+        return null;
+      }
+
+      return mapped.sort((a, b) => b.score - a.score);
     } catch (e) {
       console.error(`[seekx] rerank request failed: ${e}`);
       return null;

@@ -13,7 +13,7 @@
 import { hybridSearch } from "@seekx/core";
 import type { Command } from "commander";
 import { formatSearchResults } from "../formatter.ts";
-import { EXIT, die, openContext, warn } from "../utils.ts";
+import { EXIT, die, openContext, resolveJson, warn } from "../utils.ts";
 
 export function registerQuery(program: Command): void {
   program
@@ -28,13 +28,15 @@ export function registerQuery(program: Command): void {
       async (
         question: string,
         opts: { collection?: string; limit: string; json?: boolean; md?: boolean },
+        command: Command,
       ) => {
-        const ctx = await openContext({ json: opts.json });
+        const json = resolveJson(opts, command);
+        const ctx = await openContext({ json });
         const { store, client, cfg } = ctx;
 
         const limit = Number.parseInt(opts.limit, 10);
         if (Number.isNaN(limit) || limit < 1) {
-          die("--limit must be a positive integer.", EXIT.USER_ERROR, opts.json);
+          die("--limit must be a positive integer.", EXIT.USER_ERROR, json);
         }
 
         const { results, expandedQueries, warnings } = await hybridSearch(store, client, question, {
@@ -48,13 +50,13 @@ export function registerQuery(program: Command): void {
         for (const w of warnings) warn(w);
 
         if (results.length === 0) {
-          if (!opts.json) console.log("No results.");
+          if (!json) console.log("No results.");
           ctx.db.close();
           process.exit(EXIT.NO_RESULTS);
         }
 
         formatSearchResults(results, {
-          json: opts.json,
+          json,
           md: opts.md,
           expandedQueries,
         });

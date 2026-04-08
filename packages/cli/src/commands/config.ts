@@ -14,7 +14,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { loadConfig, writeConfigKey } from "@seekx/core";
 import type { Command } from "commander";
-import { EXIT, die } from "../utils.ts";
+import { EXIT, die, resolveJson } from "../utils.ts";
 
 const DEFAULT_CONFIG_PATH = join(homedir(), ".seekx", "config.yml");
 
@@ -28,7 +28,13 @@ export function registerConfig(program: Command): void {
     .description("Read or write a config key (path: ~/.seekx/config.yml)")
     .option("--json", "Machine-readable output")
     .action(
-      async (key: string | undefined, value: string | undefined, opts: { json?: boolean }) => {
+      async (
+        key: string | undefined,
+        value: string | undefined,
+        opts: { json?: boolean },
+        command: Command,
+      ) => {
+        const json = resolveJson(opts, command);
         const configPath = getConfigPath();
 
         // "Set" mode: config file need not exist (will be created).
@@ -41,13 +47,13 @@ export function registerConfig(program: Command): void {
           try {
             await writeConfigKey(configPath, key, value);
             const display = key.toLowerCase().includes("key") ? "***" : value;
-            if (opts.json) {
+            if (json) {
               console.log(JSON.stringify({ ok: true, key, value: display }));
             } else {
               console.log(`Set ${key} = ${display}`);
             }
           } catch (e) {
-            die(`Failed to write config: ${e}`, EXIT.INTERNAL_ERROR, opts.json);
+            die(`Failed to write config: ${e}`, EXIT.INTERNAL_ERROR, json);
           }
           return;
         }
@@ -57,11 +63,11 @@ export function registerConfig(program: Command): void {
         try {
           cfg = loadConfig();
         } catch (e) {
-          die(`Failed to load config: ${e}`, EXIT.INTERNAL_ERROR, opts.json);
+          die(`Failed to load config: ${e}`, EXIT.INTERNAL_ERROR, json);
         }
 
         if (!cfg) {
-          die("Config not found. Run 'seekx onboard' to set up seekx.", EXIT.USER_ERROR, opts.json);
+          die("Config not found. Run 'seekx onboard' to set up seekx.", EXIT.USER_ERROR, json);
         }
 
         const resolved = cfg;
@@ -69,7 +75,7 @@ export function registerConfig(program: Command): void {
         // Print full config (redacted).
         if (!key) {
           const safe = redact(resolved as unknown as object);
-          if (opts.json) {
+          if (json) {
             console.log(JSON.stringify(safe, null, 2));
           } else {
             for (const [k, v] of Object.entries(flat(safe))) {
@@ -82,9 +88,9 @@ export function registerConfig(program: Command): void {
         // Get a single key.
         const v = getNestedKey(resolved as unknown as object, key);
         if (v === undefined) {
-          die(`Unknown config key: ${key}`, EXIT.USER_ERROR, opts.json);
+          die(`Unknown config key: ${key}`, EXIT.USER_ERROR, json);
         }
-        if (opts.json) {
+        if (json) {
           console.log(JSON.stringify({ [key]: v }));
         } else {
           console.log(String(v));

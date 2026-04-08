@@ -6,7 +6,7 @@
 
 import type { Command } from "commander";
 import { formatCollections } from "../formatter.ts";
-import { openContext } from "../utils.ts";
+import { openContext, resolveJson } from "../utils.ts";
 
 export function registerCollections(program: Command): void {
   program
@@ -14,8 +14,9 @@ export function registerCollections(program: Command): void {
     .alias("ls")
     .description("List all registered collections")
     .option("--json", "Machine-readable output")
-    .action(async (opts: { json?: boolean }) => {
-      const ctx = await openContext({ json: opts.json });
+    .action(async (opts: { json?: boolean }, command: Command) => {
+      const json = resolveJson(opts, command);
+      const ctx = await openContext({ json });
       const { store } = ctx;
 
       const cols = store.listCollections();
@@ -29,7 +30,7 @@ export function registerCollections(program: Command): void {
         };
       });
 
-      formatCollections(rows, { json: opts.json });
+      formatCollections(rows, { json });
       ctx.db.close();
     });
 }

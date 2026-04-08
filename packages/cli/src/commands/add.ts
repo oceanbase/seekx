@@ -9,7 +9,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { indexDirectory } from "@seekx/core";
 import type { Command } from "commander";
-import { EXIT, die, openContext, warn } from "../utils.ts";
+import { EXIT, die, openContext, resolveJson, warn } from "../utils.ts";
 
 export function registerAdd(program: Command): void {
   program
@@ -18,10 +18,11 @@ export function registerAdd(program: Command): void {
     .option("-n, --name <name>", "Collection name (defaults to directory basename)")
     .option("--reindex", "Force re-index even if collection already exists")
     .option("--json", "Machine-readable output")
-    .action(async (pathArg: string, opts: { name?: string; reindex?: boolean; json?: boolean }) => {
+    .action(async (pathArg: string, opts: { name?: string; reindex?: boolean; json?: boolean }, command: Command) => {
+      const json = resolveJson(opts, command);
       const absPath = resolve(pathArg);
       if (!existsSync(absPath)) {
-        die(`Path does not exist: ${absPath}`, EXIT.USER_ERROR, opts.json);
+        die(`Path does not exist: ${absPath}`, EXIT.USER_ERROR, json);
       }
 
       let realPath: string;
@@ -31,7 +32,7 @@ export function registerAdd(program: Command): void {
         realPath = absPath;
       }
 
-      const ctx = await openContext({ json: opts.json });
+      const ctx = await openContext({ json });
       const { store, client, cfg } = ctx;
 
       const name = opts.name ?? basename(realPath);
@@ -41,13 +42,13 @@ export function registerAdd(program: Command): void {
         die(
           `Collection '${name}' already exists (path: ${existing.path}). Use --reindex to force re-index.`,
           EXIT.USER_ERROR,
-          opts.json,
+          json,
         );
       }
 
       store.addCollection({ name, path: realPath });
 
-      if (!opts.json) {
+      if (!json) {
         console.log(`Indexing '${name}' → ${realPath}`);
       }
 
@@ -61,16 +62,16 @@ export function registerAdd(program: Command): void {
         cfg.watch.ignore,
         (indexed, total, filePath) => {
           const now = Date.now();
-          if (!opts.json && now - lastPrint > 500) {
+          if (!json && now - lastPrint > 500) {
             lastPrint = now;
             process.stdout.write(`\r  ${indexed}/${total} — ${basename(filePath)}          `);
           }
         },
       );
 
-      if (!opts.json) process.stdout.write("\n");
+      if (!json) process.stdout.write("\n");
 
-      if (opts.json) {
+      if (json) {
         console.log(JSON.stringify({ name, path: realPath, ...result }, null, 2));
       } else {
         console.log(`\nDone. Indexed ${result.indexed} files, skipped ${result.skipped}.`);

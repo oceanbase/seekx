@@ -79,3 +79,71 @@ describe("SeekxClient.healthCheck — unreachable endpoint", () => {
     expect(health.expand).toBeNull();
   });
 });
+
+describe("SeekxClient.rerank — response shapes", () => {
+  const rerankCfg = { baseUrl: "https://example.com/api/paas/v4", apiKey: "k", model: "rerank-pro" };
+  const embedCfg = { baseUrl: "http://127.0.0.1:1", apiKey: "", model: "x" };
+
+  test("maps SiliconFlow-style index + relevance_score", async () => {
+    const prev = globalThis.fetch;
+    globalThis.fetch = async () =>
+      ({
+        ok: true,
+        json: async () => ({
+          results: [
+            { index: 1, relevance_score: 0.9 },
+            { index: 0, relevance_score: 0.1 },
+          ],
+        }),
+      }) as Response;
+
+    const client = new SeekxClient(embedCfg, rerankCfg, null);
+    const out = await client.rerank("q", ["a", "b"]);
+    globalThis.fetch = prev;
+
+    expect(out).toEqual([
+      { index: 1, score: 0.9 },
+      { index: 0, score: 0.1 },
+    ]);
+  });
+
+  test("maps Zhipu-style document + relevance_score (no index field)", async () => {
+    const prev = globalThis.fetch;
+    globalThis.fetch = async () =>
+      ({
+        ok: true,
+        json: async () => ({
+          results: [
+            { document: "second", relevance_score: 0.88 },
+            { document: "first", relevance_score: 0.12 },
+          ],
+        }),
+      }) as Response;
+
+    const client = new SeekxClient(embedCfg, rerankCfg, null);
+    const out = await client.rerank("q", ["first", "second"]);
+    globalThis.fetch = prev;
+
+    expect(out).toEqual([
+      { index: 1, score: 0.88 },
+      { index: 0, score: 0.12 },
+    ]);
+  });
+
+  test("returns null when results cannot be aligned to documents", async () => {
+    const prev = globalThis.fetch;
+    globalThis.fetch = async () =>
+      ({
+        ok: true,
+        json: async () => ({
+          results: [{ relevance_score: 0.5 }],
+        }),
+      }) as Response;
+
+    const client = new SeekxClient(embedCfg, rerankCfg, null);
+    const out = await client.rerank("q", ["only"]);
+    globalThis.fetch = prev;
+
+    expect(out).toBeNull();
+  });
+});

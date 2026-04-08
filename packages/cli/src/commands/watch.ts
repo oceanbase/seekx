@@ -7,15 +7,16 @@
 
 import { Watcher } from "@seekx/core";
 import type { Command } from "commander";
-import { EXIT, die, openContext, warn } from "../utils.ts";
+import { EXIT, die, openContext, resolveJson, warn } from "../utils.ts";
 
 export function registerWatch(program: Command): void {
   program
     .command("watch [collection]")
     .description("Watch one or all collections for file changes and re-index automatically")
     .option("--json", "Machine-readable output (one JSON event per line)")
-    .action(async (collection: string | undefined, opts: { json?: boolean }) => {
-      const ctx = await openContext({ json: opts.json });
+    .action(async (collection: string | undefined, opts: { json?: boolean }, command: Command) => {
+      const json = resolveJson(opts, command);
+      const ctx = await openContext({ json });
       const { store, client, cfg } = ctx;
 
       const cols = collection
@@ -28,7 +29,7 @@ export function registerWatch(program: Command): void {
             ? `Collection '${collection}' not found.`
             : "No collections registered. Use 'seekx add <path>' first.",
           EXIT.USER_ERROR,
-          opts.json,
+          json,
         );
       }
 
@@ -40,7 +41,7 @@ export function registerWatch(program: Command): void {
       );
 
       watcher.on("ready", () => {
-        if (opts.json) {
+        if (json) {
           console.log(JSON.stringify({ type: "ready", collections: cols.map((c) => c.name) }));
         } else {
           console.log(`Watching ${cols.length} collection(s). Press Ctrl+C to stop.`);
@@ -48,7 +49,7 @@ export function registerWatch(program: Command): void {
       });
 
       watcher.on("event", (e) => {
-        if (opts.json) {
+        if (json) {
           console.log(JSON.stringify(e));
           return;
         }
@@ -72,7 +73,7 @@ export function registerWatch(program: Command): void {
       watcher.start();
 
       const shutdown = async () => {
-        if (!opts.json) console.log("\nStopping watcher…");
+        if (!json) console.log("\nStopping watcher…");
         await watcher.stop();
         ctx.db.close();
         process.exit(EXIT.OK);

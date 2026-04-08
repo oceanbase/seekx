@@ -4,6 +4,7 @@
 
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import type { Command } from "commander";
 import {
   SeekxClient,
   Store,
@@ -25,6 +26,21 @@ export const EXIT = {
   USER_ERROR: 3,
   INTERNAL_ERROR: 4,
 } as const;
+
+/**
+ * Merge `--json` from the root `seekx` program and the active subcommand.
+ *
+ * Commander stores a trailing `--json` on the parent when both register the same
+ * flag, leaving subcommand options without `json`.
+ */
+export function resolveJson(opts: { json?: boolean }, cmd: Command): boolean {
+  if (opts.json) return true;
+  for (let p: Command | undefined = cmd.parent ?? undefined; p; p = p.parent ?? undefined) {
+    const j = (p.opts() as { json?: boolean }).json;
+    if (j) return true;
+  }
+  return false;
+}
 
 // ---------------------------------------------------------------------------
 // App context

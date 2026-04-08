@@ -7,7 +7,7 @@
 
 import type { Command } from "commander";
 import { formatChunk } from "../formatter.ts";
-import { EXIT, die, openContext } from "../utils.ts";
+import { EXIT, die, openContext, resolveJson } from "../utils.ts";
 
 export function registerGet(program: Command): void {
   program
@@ -15,24 +15,25 @@ export function registerGet(program: Command): void {
     .description("Retrieve a document or chunk by its id")
     .option("--json", "Machine-readable output")
     .option("--md", "Markdown output")
-    .action(async (docid: string, opts: { json?: boolean; md?: boolean }) => {
-      const ctx = await openContext({ json: opts.json });
+    .action(async (docid: string, opts: { json?: boolean; md?: boolean }, command: Command) => {
+      const json = resolveJson(opts, command);
+      const ctx = await openContext({ json });
       const { store } = ctx;
 
       const numId = store.decodeDocid(docid);
       if (numId == null) {
-        die(`Invalid document id: ${docid}`, EXIT.USER_ERROR, opts.json);
+        die(`Invalid document id: ${docid}`, EXIT.USER_ERROR, json);
       }
 
       const doc = store.getDocumentById(numId);
       if (!doc) {
-        die(`Document not found: ${docid}`, EXIT.USER_ERROR, opts.json);
+        die(`Document not found: ${docid}`, EXIT.USER_ERROR, json);
       }
 
       // doc.chunks is pre-populated by getDocumentById.
       const { chunks, ...docMeta } = doc;
 
-      if (opts.json) {
+      if (json) {
         console.log(JSON.stringify({ ...docMeta, chunks }, null, 2));
       } else {
         const content = chunks.map((c) => c.content).join("\n\n---\n\n");
