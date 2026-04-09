@@ -39,6 +39,7 @@ interface SearchConfig {
   default_limit?: number;
   rerank?: boolean;
   min_score?: number;
+  min_result_score?: number;
 }
 
 interface WatchConfig {
@@ -73,6 +74,7 @@ export interface ResolvedConfig {
     defaultLimit: number;
     rerank: boolean;
     minScore: number;
+    minResultScore: number;
   };
   watch: {
     debounceMs: number;
@@ -157,6 +159,7 @@ function resolveConfig(raw: RawConfig, configPath: string): ResolvedConfig {
       defaultLimit: raw.search?.default_limit ?? 10,
       rerank: raw.search?.rerank ?? true,
       minScore: raw.search?.min_score ?? 0.3,
+      minResultScore: raw.search?.min_result_score ?? 0.01,
     },
     watch: {
       debounceMs: raw.watch?.debounce_ms ?? 500,

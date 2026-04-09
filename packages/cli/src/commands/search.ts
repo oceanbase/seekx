@@ -52,6 +52,7 @@ export function registerSearch(program: Command): void {
               ...(opts.collection ? { collections: [opts.collection] } : {}),
               limit,
               minScore: cfg.search.minScore,
+              minResultScore: cfg.search.minResultScore,
               mode: "hybrid",
               useRerank: opts.rerank && cfg.search.rerank,
               useExpand: opts.expand,

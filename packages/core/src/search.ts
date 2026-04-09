@@ -21,6 +21,11 @@
  *   NOT applied after reranking: cross-encoder scores are model-specific
  *   and not calibrated to the same scale; thresholding would silently
  *   drop relevant results when the reranker's score distribution is low.
+ *
+ * minResultScore semantics:
+ *   Applied to final normalized scores (0–1, relative to the top result).
+ *   Filters out results that are trivially irrelevant compared to the best
+ *   match. Safe for all pipelines because it operates on the relative scale.
  */
 
 import type { RerankResult, SeekxClient } from "./client.ts";
@@ -33,6 +38,8 @@ export interface SearchOptions {
   collections?: string[];
   limit?: number;
   minScore?: number;
+  /** Minimum *normalized* score (0–1, relative to top result) for inclusion. */
+  minResultScore?: number;
   mode?: "hybrid" | "bm25" | "vector";
   useRerank?: boolean;
   useExpand?: boolean;
@@ -85,6 +92,10 @@ export async function hybridSearch(
   const minScore =
     typeof opts.minScore === "number" && Number.isFinite(opts.minScore)
       ? Math.min(1, Math.max(0, opts.minScore))
+      : 0;
+  const minResultScore =
+    typeof opts.minResultScore === "number" && Number.isFinite(opts.minResultScore)
+      ? Math.min(1, Math.max(0, opts.minResultScore))
       : 0;
   const mode = opts.mode ?? "hybrid";
   const useRerank = opts.useRerank ?? true;
@@ -190,21 +201,23 @@ export async function hybridSearch(
   }
 
   // --- Step 5: Format results ---
-  // minScore is enforced earlier on raw vector / rerank scores. Display scores
-  // remain normalized so the top visible result is always 1.0.
+  // minScore is enforced earlier on raw vector scores. minResultScore filters
+  // normalized scores so trivially irrelevant results (e.g. 0%) are dropped.
   const topScore = finalRaw[0]?.score ?? 1;
   const sliced = finalRaw.slice(0, limit);
-  const results: SearchResult[] = sliced.map((raw) => ({
-    docid: store.encodeDocid(raw.doc_id),
-    chunk_id: raw.chunk_id,
-    file: raw.path,
-    title: raw.title,
-    collection: raw.collection,
-    score: normalizeScore(raw.score, topScore),
-    snippet: extractSnippet(raw.content, query, 180),
-    start_line: raw.start_line,
-    end_line: raw.end_line,
-  }));
+  const results: SearchResult[] = sliced
+    .map((raw) => ({
+      docid: store.encodeDocid(raw.doc_id),
+      chunk_id: raw.chunk_id,
+      file: raw.path,
+      title: raw.title,
+      collection: raw.collection,
+      score: normalizeScore(raw.score, topScore),
+      snippet: extractSnippet(raw.content, query, 180),
+      start_line: raw.start_line,
+      end_line: raw.end_line,
+    }))
+    .filter((r) => r.score >= minResultScore);
 
   onProgress?.({ phase: "done", resultCount: results.length, warningCount: warnings.length });
 

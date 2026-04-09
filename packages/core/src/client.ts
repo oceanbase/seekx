@@ -194,9 +194,11 @@ export class SeekxClient {
       }
       const alternatives = parseExpandAlternatives(parsed, stripped);
       if (!alternatives) {
-        console.error(
-          `[seekx] expand API error: could not extract string alternatives. raw response: ${JSON.stringify(raw)}`,
-        );
+        if (shouldLogExpandParseFailure(parsed, stripped)) {
+          console.error(
+            `[seekx] expand API error: could not extract string alternatives. raw response: ${JSON.stringify(raw)}`,
+          );
+        }
         return null;
       }
       // Always include the original query.
@@ -329,6 +331,20 @@ function sanitizeExpandAlternatives(values: unknown[]): string[] | null {
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
   return out.length > 0 ? out : null;
+}
+
+function shouldLogExpandParseFailure(value: unknown, raw: string): boolean {
+  const trimmed = raw.trim();
+  if (trimmed === "" || trimmed === "[]" || trimmed === "{}" || trimmed === "null") {
+    return false;
+  }
+  if (Array.isArray(value) && value.length === 0) {
+    return false;
+  }
+  if (value && typeof value === "object" && Object.keys(value).length === 0) {
+    return false;
+  }
+  return true;
 }
 
 async function fetchWithTimeout(

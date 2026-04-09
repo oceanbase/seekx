@@ -377,3 +377,153 @@ describe("hybridSearch — client fail-open", () => {
     expect(results[0]?.score).toBe(1);
   });
 });
+
+describe("hybridSearch — minResultScore (post-normalization filter)", () => {
+  test("filters results whose normalized score falls below the threshold", async () => {
+    const fakeVectorStore = {
+      searchFTS: () => [] as RawResult[],
+      searchVector: () =>
+        [
+          {
+            chunk_id: 1,
+            doc_id: 1,
+            score: 0.9,
+            content: "highly relevant",
+            path: "/a.md",
+            title: "A",
+            collection: "col",
+            start_line: 1,
+            end_line: 2,
+          },
+          {
+            chunk_id: 2,
+            doc_id: 2,
+            score: 0.45,
+            content: "moderately relevant",
+            path: "/b.md",
+            title: "B",
+            collection: "col",
+            start_line: 1,
+            end_line: 2,
+          },
+          {
+            chunk_id: 3,
+            doc_id: 3,
+            score: 0.005,
+            content: "irrelevant noise",
+            path: "/c.md",
+            title: "C",
+            collection: "col",
+            start_line: 1,
+            end_line: 2,
+          },
+        ] satisfies RawResult[],
+      encodeDocid: (docId: number) => String(docId).padStart(6, "0"),
+    } as unknown as Store;
+
+    const client = {
+      embed: async () => [[1, 0, 0]],
+      expand: async () => null,
+      rerank: async () => null,
+      healthCheck: async () => ({ embed: null, rerank: null, expand: null }),
+    } as unknown as SeekxClient;
+
+    const { results } = await hybridSearch(fakeVectorStore, client, "relevant", {
+      mode: "vector",
+      useExpand: false,
+      useRerank: false,
+      minScore: 0,
+      minResultScore: 0.01,
+    });
+
+    // 0.005/0.9 ≈ 0.0056 < 0.01 → chunk 3 should be filtered out.
+    expect(results).toHaveLength(2);
+    expect(results[0]?.file).toBe("/a.md");
+    expect(results[1]?.file).toBe("/b.md");
+  });
+
+  test("defaults to 0 (no filtering) when minResultScore is not set", async () => {
+    const fakeVectorStore = {
+      searchFTS: () => [] as RawResult[],
+      searchVector: () =>
+        [
+          {
+            chunk_id: 1,
+            doc_id: 1,
+            score: 0.9,
+            content: "relevant",
+            path: "/a.md",
+            title: "A",
+            collection: "col",
+            start_line: 1,
+            end_line: 2,
+          },
+          {
+            chunk_id: 2,
+            doc_id: 2,
+            score: 0.001,
+            content: "noise",
+            path: "/b.md",
+            title: "B",
+            collection: "col",
+            start_line: 1,
+            end_line: 2,
+          },
+        ] satisfies RawResult[],
+      encodeDocid: (docId: number) => String(docId).padStart(6, "0"),
+    } as unknown as Store;
+
+    const client = {
+      embed: async () => [[1, 0, 0]],
+      expand: async () => null,
+      rerank: async () => null,
+      healthCheck: async () => ({ embed: null, rerank: null, expand: null }),
+    } as unknown as SeekxClient;
+
+    const { results } = await hybridSearch(fakeVectorStore, client, "relevant", {
+      mode: "vector",
+      useExpand: false,
+      useRerank: false,
+      minScore: 0,
+    });
+
+    expect(results).toHaveLength(2);
+  });
+
+  test("works with BM25-only mode", async () => {
+    // Insert a third doc so BM25 returns a wide score spread.
+    const docC = store.upsertDocument({
+      collection: "col",
+      path: "/col/c.md",
+      title: "Gamma",
+      mtime: 1,
+      hash: "hc",
+    });
+    const cC = store.insertChunk({
+      doc_id: docC,
+      chunk_idx: 0,
+      content: "machine learning deep learning neural networks",
+      heading_path: null,
+      start_line: 0,
+      end_line: 3,
+      token_count: 6,
+    });
+    store.insertFTS(cC, "machine learning deep learning neural networks");
+
+    const { results: allResults } = await hybridSearch(store, null, "machine learning", {
+      mode: "bm25",
+      minResultScore: 0,
+    });
+
+    const { results: filteredResults } = await hybridSearch(store, null, "machine learning", {
+      mode: "bm25",
+      minResultScore: 0.5,
+    });
+
+    // With a 50% threshold, only results scoring >= 50% of the top result survive.
+    expect(filteredResults.length).toBeLessThanOrEqual(allResults.length);
+    for (const r of filteredResults) {
+      expect(r.score).toBeGreaterThanOrEqual(0.5);
+    }
+  });
+});

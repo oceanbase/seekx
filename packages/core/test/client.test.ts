@@ -150,6 +150,26 @@ describe("SeekxClient.expand — JSON parsing", () => {
     expect(result).toBeNull();
   });
 
+  test("treats an empty object response as silent fail-open", async () => {
+    const prevFetch = globalThis.fetch;
+    const prevError = console.error;
+    const errors: string[] = [];
+    globalThis.fetch = mockExpandFetch("{}");
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
+
+    try {
+      const client = new SeekxClient(embedCfg, null, expandCfg);
+      const result = await client.expand("query");
+      expect(result).toBeNull();
+      expect(errors).toEqual([]);
+    } finally {
+      globalThis.fetch = prevFetch;
+      console.error = prevError;
+    }
+  });
+
   test("tolerates null items mixed into the alternatives array", async () => {
     // Some models return ["q1", null, "q2"]; we should keep the valid strings.
     const prev = globalThis.fetch;

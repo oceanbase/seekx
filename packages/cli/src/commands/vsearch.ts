@@ -49,6 +49,7 @@ export function registerVsearch(program: Command): void {
             ...(opts.collection ? { collections: [opts.collection] } : {}),
             limit,
             minScore: cfg.search.minScore,
+            minResultScore: cfg.search.minResultScore,
             mode: "vector",
             useRerank: false,
             useExpand: false,

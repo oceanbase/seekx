@@ -46,6 +46,7 @@ export function registerMcp(program: Command): void {
             ...(collection ? { collections: [collection] } : {}),
             limit: limit ?? cfg.search.defaultLimit,
             minScore: cfg.search.minScore,
+            minResultScore: cfg.search.minResultScore,
             mode: "hybrid",
             useRerank: cfg.search.rerank,
             useExpand: true,
