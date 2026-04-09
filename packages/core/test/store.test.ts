@@ -177,6 +177,83 @@ describe("FTS search", () => {
   });
 });
 
+describe("vec_chunks cleanup on document deletion", () => {
+  // Uses a regular table named vec_chunks (not sqlite-vec virtual table) to
+  // verify that _deleteChunkDerivedData deletes embeddings without needing
+  // the sqlite-vec extension to be present at test time.
+  test("deleteDocument removes vec_chunks rows for every chunk", async () => {
+    // Bootstrap: use a vecLoaded=false store to run migrations and seed data.
+    const seedStore = new Store(db, false);
+    seedStore.addCollection({ name: "vc", path: "/vc" });
+    const docId = seedStore.upsertDocument({
+      collection: "vc",
+      path: "/vc/doc.md",
+      title: "D",
+      mtime: 1,
+      hash: "hD",
+    });
+    const chunkId = seedStore.insertChunk({
+      doc_id: docId,
+      chunk_idx: 0,
+      content: "content",
+      heading_path: null,
+      start_line: 0,
+      end_line: 1,
+      token_count: 1,
+    });
+    seedStore.insertFTS(chunkId, "content");
+    // Simulate stored embed_dim and a fake vec_chunks table (plain table, no vec0).
+    seedStore.setMeta("embed_dim", "3");
+    db.exec("CREATE TABLE IF NOT EXISTS vec_chunks (chunk_id INTEGER PRIMARY KEY)");
+    db.exec(`INSERT INTO vec_chunks(chunk_id) VALUES (${chunkId})`);
+
+    // Create a vecLoaded=true store on the same database. The constructor reads
+    // embed_dim from meta so vecDim becomes 3, enabling vec cleanup.
+    const vecStore = new Store(db, true);
+    const before = db.prepare("SELECT COUNT(*) AS n FROM vec_chunks").get() as { n: number };
+    expect(before.n).toBe(1);
+
+    vecStore.deleteDocument(docId);
+
+    const after = db.prepare("SELECT COUNT(*) AS n FROM vec_chunks").get() as { n: number };
+    expect(after.n).toBe(0);
+  });
+
+  test("removeCollection removes vec_chunks rows for all its documents", async () => {
+    const seedStore = new Store(db, false);
+    seedStore.addCollection({ name: "vc2", path: "/vc2" });
+    const docId = seedStore.upsertDocument({
+      collection: "vc2",
+      path: "/vc2/doc.md",
+      title: "E",
+      mtime: 1,
+      hash: "hE",
+    });
+    const chunkId = seedStore.insertChunk({
+      doc_id: docId,
+      chunk_idx: 0,
+      content: "some text",
+      heading_path: null,
+      start_line: 0,
+      end_line: 1,
+      token_count: 2,
+    });
+    seedStore.insertFTS(chunkId, "some text");
+    seedStore.setMeta("embed_dim", "3");
+    db.exec("CREATE TABLE IF NOT EXISTS vec_chunks (chunk_id INTEGER PRIMARY KEY)");
+    db.exec(`INSERT OR IGNORE INTO vec_chunks(chunk_id) VALUES (${chunkId})`);
+
+    const vecStore = new Store(db, true);
+    const before = db.prepare("SELECT COUNT(*) AS n FROM vec_chunks").get() as { n: number };
+    expect(before.n).toBeGreaterThan(0);
+
+    vecStore.removeCollection("vc2");
+
+    const after = db.prepare("SELECT COUNT(*) AS n FROM vec_chunks").get() as { n: number };
+    expect(after.n).toBe(0);
+  });
+});
+
 describe("Meta KV", () => {
   test("setMeta and getMeta", () => {
     store.setMeta("version", "1");

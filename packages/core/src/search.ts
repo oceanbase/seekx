@@ -15,6 +15,12 @@
  *   embed unavailable   → skip vector branch, BM25 only
  *   sqlite-vec absent   → skip vector branch
  *   rerank unavailable  → return RRF top-K directly
+ *
+ * minScore semantics:
+ *   Applied only to raw vector similarity scores (cosine, 0–1 range).
+ *   NOT applied after reranking: cross-encoder scores are model-specific
+ *   and not calibrated to the same scale; thresholding would silently
+ *   drop relevant results when the reranker's score distribution is low.
  */
 
 import type { RerankResult, SeekxClient } from "./client.ts";
@@ -95,7 +101,16 @@ export async function hybridSearch(
     onProgress?.({ phase: "expand_start", query });
     const expanded = await client.expand(query);
     if (expanded) {
-      expandedQueries = expanded;
+      // Always keep the original query at index 0 so BM25/vector recall is
+      // never worse than without expansion, even if the LLM returns rewrites
+      // that omit the original terms. Deduplicate to avoid redundant searches.
+      const seen = new Set([query]);
+      for (const q of expanded) {
+        if (!seen.has(q)) {
+          seen.add(q);
+          expandedQueries.push(q);
+        }
+      }
     }
     // No warning if expand unavailable — degradation is transparent.
     onProgress?.({ phase: "expand_done", expandedQueries });
@@ -161,7 +176,11 @@ export async function hybridSearch(
       topCandidates.map((r) => r.content),
     );
     if (reranked) {
-      finalRaw = applyRerank(topCandidates, reranked).filter((raw) => raw.score >= minScore);
+      // minScore is intentionally NOT applied here: reranker scores are
+      // model-specific and not calibrated to the same 0–1 cosine range.
+      // Applying a fixed threshold would silently drop relevant results.
+      // Pre-filtering is already done on vector similarity scores above.
+      finalRaw = applyRerank(topCandidates, reranked);
     }
     onProgress?.({
       phase: "rerank_done",
@@ -201,6 +220,14 @@ export async function hybridSearch(
 // ---------------------------------------------------------------------------
 
 function rrfFuse(lists: RawResult[][]): RawResult[] {
+  // Single-list fast path: RRF would replace every score with 1/(k+rank+1),
+  // discarding actual similarity values (cosine sim, BM25 rank, etc.).
+  // For a single source, preserve the original scores so the caller gets
+  // meaningful values (e.g. cosine similarity for pure vector search).
+  if (lists.length === 1) {
+    return [...(lists[0] ?? [])].sort((a, b) => b.score - a.score);
+  }
+
   // Score map: chunk_id → { rrfScore, raw }
   const scoreMap = new Map<number, { score: number; raw: RawResult }>();
 

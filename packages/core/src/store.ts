@@ -14,6 +14,8 @@
  *
  * vec_chunks invariant: embeddings are L2-normalized before insertion so that
  * L2 distance is equivalent to cosine distance for unit vectors.
+ * vec_chunks does NOT cascade from chunks (sqlite-vec virtual table has no FK
+ * support); callers must delete vec_chunks rows in the same step as FTS rows.
  */
 
 import type { Database } from "./db.ts";
@@ -305,7 +307,7 @@ export class Store {
     }[];
 
     for (const { id } of docIds) {
-      this._deleteFTSForDoc(id);
+      this._deleteChunkDerivedData(id);
     }
 
     const result = this.db.prepare("DELETE FROM collections WHERE name = ?").run(name);
@@ -350,18 +352,25 @@ export class Store {
    * (FTS5 does not support cascade), then chunks (which cascade vec_chunks).
    */
   deleteDocument(docId: number): void {
-    this._deleteFTSForDoc(docId);
+    this._deleteChunkDerivedData(docId);
     this.db.prepare("DELETE FROM documents WHERE id = ?").run(docId);
   }
 
-  private _deleteFTSForDoc(docId: number): void {
-    // Fetch chunk ids to delete FTS rows by rowid (O(1) per row).
+  private _deleteChunkDerivedData(docId: number): void {
+    // Fetch chunk ids before the cascade deletes them from chunks.
     const chunkIds = this.db.prepare("SELECT id FROM chunks WHERE doc_id = ?").all(docId) as {
       id: number;
     }[];
-    const stmt = this.db.prepare("DELETE FROM fts WHERE rowid = ?");
+    const ftsStmt = this.db.prepare("DELETE FROM fts WHERE rowid = ?");
+    // vec_chunks is a sqlite-vec virtual table with no FK to chunks, so it
+    // does NOT cascade automatically — we must delete explicitly.
+    const vecStmt =
+      this.vecLoaded && this.vecDim
+        ? this.db.prepare("DELETE FROM vec_chunks WHERE chunk_id = ?")
+        : null;
     for (const { id } of chunkIds) {
-      stmt.run(id);
+      ftsStmt.run(id);
+      vecStmt?.run(id);
     }
   }
 

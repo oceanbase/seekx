@@ -124,7 +124,8 @@ export async function indexFile(
 
   // --- Content changed or new file ---
   if (existing) {
-    // deleteDocument cleans FTS first, then cascades chunks → vec_chunks.
+    // deleteDocument removes FTS and vec_chunks rows (no FK cascade for either
+    // virtual table), then cascades to delete chunks via documents FK.
     store.deleteDocument(existing.id);
   }
 

@@ -196,7 +196,35 @@ describe("hybridSearch — client fail-open", () => {
     expect(events.at(-1)).toMatchObject({ phase: "done", warningCount: 0 });
   });
 
-  test("filters low-scoring tail results with minScore on rerank raw scores", async () => {
+  test("preserves original query when expand returns rewrites that omit it", async () => {
+    // Regression: if the LLM omits the original query in its expansion,
+    // BM25 should still run the original query and return results.
+    // Note: expansion is only active in hybrid/vector mode (not bm25-only).
+    const client = {
+      expand: async () => ["machine learning systems", "ML algorithms"], // omits "machine"
+      embed: async () => null,
+      rerank: async () => null,
+      healthCheck: async () => ({ embed: null, rerank: null, expand: null }),
+    } as unknown as SeekxClient;
+
+    const { results, expandedQueries } = await hybridSearch(store, client, "machine", {
+      mode: "hybrid",
+      useExpand: true,
+      useRerank: false,
+    });
+
+    // Original "machine" must be index 0 of expandedQueries.
+    expect(expandedQueries[0]).toBe("machine");
+    // Results must include the doc that only matches "machine" directly.
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.map((r) => r.file)).toContain("/col/a.md");
+  });
+
+  test("rerank scores are not filtered by minScore (only vector pre-filter uses it)", async () => {
+    // Regression guard: minScore applies only to raw vector similarity scores.
+    // Cross-encoder reranker scores are model-specific and must NOT be
+    // thresholded — doing so would silently drop relevant results (e.g. when
+    // the reranker's score distribution sits below the configured threshold).
     const docC = store.upsertDocument({
       collection: "col",
       path: "/col/c.md",
@@ -218,9 +246,10 @@ describe("hybridSearch — client fail-open", () => {
     const client = {
       embed: async () => null,
       expand: async () => null,
+      // Reranker returns low scores (< minScore) for both candidates.
       rerank: async () => [
-        { index: 1, score: 1 },
-        { index: 0, score: 0.2 },
+        { index: 1, score: 0.25 },
+        { index: 0, score: 0.1 },
       ],
       healthCheck: async () => ({ embed: null, rerank: null, expand: null }),
     } as unknown as SeekxClient;
@@ -232,9 +261,70 @@ describe("hybridSearch — client fail-open", () => {
       minScore: 0.3,
     });
 
-    expect(results).toHaveLength(1);
-    expect(results[0]?.file).toBe("/col/c.md");
+    // Both results survive even though all reranker scores are < minScore=0.3.
+    // The top result is normalized to 1.0; the second is relative to it.
+    expect(results).toHaveLength(2);
+    expect(results[0]?.file).toBe("/col/c.md"); // reranker ranked index 1 first
     expect(results[0]?.score).toBe(1);
+    expect(results[1]?.file).toBe("/col/a.md");
+  });
+
+  test("pure vector mode shows cosine similarity scores, not RRF rank scores", async () => {
+    // Regression: in single-list mode, rrfFuse must pass through the original
+    // scores instead of replacing them with 1/(k+rank+1) contributions.
+    // RRF rank scores always produce the pattern 1.0, 0.984, 0.968…
+    // (= 61/61, 61/62, 61/63…) regardless of actual similarity.
+    const fakeVectorStore = {
+      searchFTS: () => [] as RawResult[],
+      searchVector: () =>
+        [
+          {
+            chunk_id: 1,
+            doc_id: 1,
+            score: 0.9,
+            content: "highly relevant",
+            path: "/a.md",
+            title: "A",
+            collection: "col",
+            start_line: 1,
+            end_line: 2,
+          },
+          {
+            chunk_id: 2,
+            doc_id: 2,
+            score: 0.45,
+            content: "weakly relevant",
+            path: "/b.md",
+            title: "B",
+            collection: "col",
+            start_line: 1,
+            end_line: 2,
+          },
+        ] satisfies RawResult[],
+      encodeDocid: (docId: number) => String(docId).padStart(6, "0"),
+    } as unknown as Store;
+
+    const client = {
+      embed: async () => [[1, 0, 0]],
+      expand: async () => null,
+      rerank: async () => null,
+      healthCheck: async () => ({ embed: null, rerank: null, expand: null }),
+    } as unknown as SeekxClient;
+
+    const { results } = await hybridSearch(fakeVectorStore, client, "relevant", {
+      mode: "vector",
+      useExpand: false,
+      useRerank: false,
+      minScore: 0,
+    });
+
+    expect(results).toHaveLength(2);
+    // Top result is normalized to 1.0 (0.9 / 0.9).
+    expect(results[0]?.score).toBeCloseTo(1.0, 5);
+    // Second result: 0.45 / 0.9 = 0.5 — reflects actual cosine ratio.
+    expect(results[1]?.score).toBeCloseTo(0.5, 5);
+    // Must NOT be the RRF rank-based value 61/62 ≈ 0.984.
+    expect(results[1]?.score).not.toBeCloseTo(61 / 62, 2);
   });
 
   test("filters low-scoring vector candidates with minScore on vector raw scores", async () => {
