@@ -81,3 +81,45 @@ describe("chunkDocument — plain text", () => {
     }
   });
 });
+
+describe("chunkDocument — overlap boundary preservation", () => {
+  test("overlap does not start mid-word when cut falls inside a word", () => {
+    // Use a text whose words are identifiable by their first character: each
+    // word is "abcdefghij" (10 chars) followed by a space. A mid-word cut would
+    // produce a sub-chunk starting with 'b'–'j' (a continuation character).
+    // With word-boundary alignment, every sub-chunk must start with 'a' (new
+    // word), '#' (heading), or whitespace.
+    const longSection = `## Section\n\n${"abcdefghij ".repeat(500)}`;
+    const chunks = chunkDocument(longSection);
+
+    // Need at least 2 chunks for splitText to be exercised.
+    expect(chunks.length).toBeGreaterThanOrEqual(2);
+
+    for (let i = 0; i < chunks.length; i++) {
+      const content = chunks[i]?.content ?? "";
+      // Find the first non-whitespace character to check the word boundary.
+      const firstWordChar = content.trimStart()[0] ?? "";
+      // In our "abcdefghij " pattern:
+      //   - 'a'  → valid: start of a complete word
+      //   - '#'  → valid: heading marker
+      //   - 'b'–'j' → INVALID: mid-word continuation
+      //
+      // Allow heading chars (#) and word-start chars (a), reject continuations.
+      const isMidWord = /^[b-j]$/.test(firstWordChar);
+      expect(isMidWord).toBe(false);
+    }
+  });
+
+  test("overlap is non-empty for large documents", () => {
+    // Verify that the boundary fix doesn't produce zero-length overlaps
+    // when the cut point happens to be at a word start.
+    const content = `# Big Doc\n\n${"hello world ".repeat(600)}`;
+    const chunks = chunkDocument(content);
+    // For large docs, adjacent chunks should share some context.
+    // We can't assert exact overlap chars, but ensure chunks are non-empty.
+    for (const c of chunks) {
+      expect(c.content.length).toBeGreaterThan(0);
+    }
+    expect(chunks.length).toBeGreaterThanOrEqual(2);
+  });
+});

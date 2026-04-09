@@ -190,9 +190,32 @@ function splitText(
     const lineEst = Math.round(startLine + progress * span);
 
     chunks.push(makeChunk(idx++, slice, headingPath, lineEst, endLine));
-    offset += TARGET_CHARS - OVERLAP_CHARS;
+
+    // Advance to the next sub-chunk start, aligned to a word boundary.
+    // Without this, fixed-size slicing would begin the next chunk mid-word
+    // whenever TARGET_CHARS - OVERLAP_CHARS doesn't land on whitespace.
+    const idealNext = offset + TARGET_CHARS - OVERLAP_CHARS;
+    const aligned = wordAlignForward(text, idealNext);
+    if (aligned <= offset) break; // guard: prevent infinite loop on very long words
+    offset = aligned;
   }
   return chunks;
+}
+
+/**
+ * Advance `idx` to the start of the next complete word (non-whitespace run)
+ * at or after position `idx`. If `idx` is mid-word, advance past the current
+ * word first; if already at whitespace, skip it directly.
+ */
+function wordAlignForward(text: string, idx: number): number {
+  if (idx >= text.length) return text.length;
+  // If mid-word, advance to end of the current word.
+  if (!/\s/.test(text[idx] ?? "")) {
+    while (idx < text.length && !/\s/.test(text[idx] ?? "")) idx++;
+  }
+  // Skip whitespace to reach the start of the next word.
+  while (idx < text.length && /\s/.test(text[idx] ?? "")) idx++;
+  return idx;
 }
 
 function makeChunk(
@@ -215,7 +238,31 @@ function makeChunk(
   };
 }
 
+/**
+ * Return the last `chars` characters of `text`, aligned to the nearest
+ * word boundary so the overlap never starts mid-word.
+ *
+ * Strategy: if the character at the cut point is already whitespace, trim
+ * leading whitespace and return. Otherwise advance to the next space or
+ * newline. This keeps the overlap trimmed and semantically clean.
+ */
 function trailing(text: string, chars: number): string {
   if (text.length <= chars) return text;
-  return text.slice(text.length - chars);
+  const idx = text.length - chars;
+  // Already at whitespace — trim and return.
+  if (/\s/.test(text[idx] ?? "")) return text.slice(idx).trimStart();
+  // Advance to the next space or newline to avoid cutting mid-word.
+  const nextSpace = text.indexOf(" ", idx);
+  const nextNl = text.indexOf("\n", idx);
+  let boundary: number;
+  if (nextSpace === -1 && nextNl === -1) {
+    boundary = text.length; // no boundary found; return empty overlap
+  } else if (nextSpace === -1) {
+    boundary = nextNl;
+  } else if (nextNl === -1) {
+    boundary = nextSpace;
+  } else {
+    boundary = Math.min(nextSpace, nextNl);
+  }
+  return text.slice(boundary).trimStart();
 }
