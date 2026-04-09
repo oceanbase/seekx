@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDatabase } from "../src/db.ts";
@@ -69,6 +70,184 @@ function waitForEvents(
     });
   });
 }
+
+// ---------------------------------------------------------------------------
+// Helpers for syncCollections tests
+// ---------------------------------------------------------------------------
+
+/**
+ * Collect all "event" emissions from a watcher into an array.
+ * Returns a cleanup function that removes the listener.
+ */
+function collectEvents(watcher: Watcher): { events: WatcherEvent[]; stop: () => void } {
+  const events: WatcherEvent[] = [];
+  const handler = (e: WatcherEvent) => events.push(e);
+  watcher.on("event", handler);
+  return { events, stop: () => watcher.off("event", handler) };
+}
+
+describe("Watcher.syncCollections()", () => {
+  test("emits collection_added and starts watching when a new collection appears in DB", async () => {
+    // Watcher starts with only "docs"; "notes" is added to the store later.
+    const notesPath = join(tempRoot, "notes");
+    mkdirSync(notesPath, { recursive: true });
+
+    const watcher = new Watcher(store, null, [{ collection: "docs", rootPath: docsPath }], {
+      debounceMs: 25,
+      syncIntervalMs: 2000,
+    });
+    const driver = watcher as unknown as { syncCollections(): void };
+    const { events, stop } = collectEvents(watcher);
+
+    try {
+      // Register "notes" in the DB — the watcher hasn't seen it yet.
+      store.addCollection({ name: "notes", path: notesPath });
+
+      driver.syncCollections();
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toEqual({ type: "collection_added", collection: "notes" });
+
+      // A file written to the new collection should now be indexable via
+      // handleChange, confirming chokidar (simulated via driver) routes correctly.
+      const driver2 = watcher as unknown as { handleChange(path: string): void };
+      const notePath = join(notesPath, "hello.md");
+      writeFileSync(notePath, "# Hello\n\nNotes collection.\n", "utf-8");
+
+      const indexedPromise = new Promise<WatcherEvent>((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error("timeout")), 3000);
+        watcher.on("event", (e) => {
+          if (e.type === "indexed" && e.result.path === notePath) {
+            clearTimeout(t);
+            resolve(e);
+          }
+        });
+      });
+
+      driver2.handleChange(notePath);
+      const indexed = await indexedPromise;
+      expect(indexed.type).toBe("indexed");
+    } finally {
+      stop();
+      await watcher.stop();
+    }
+  });
+
+  test("emits collection_removed, cancels debounce timers, and stops watching when a collection disappears from DB", () => {
+    // Watcher starts watching both "docs" and "notes"; "notes" is then removed.
+    const notesPath = join(tempRoot, "notes");
+    mkdirSync(notesPath, { recursive: true });
+    store.addCollection({ name: "notes", path: notesPath });
+
+    const watcher = new Watcher(
+      store,
+      null,
+      [
+        { collection: "docs", rootPath: docsPath },
+        { collection: "notes", rootPath: notesPath },
+      ],
+      { debounceMs: 60000, syncIntervalMs: 2000 }, // very long debounce so timer stays alive
+    );
+
+    // Access internal state to plant a debounce timer simulating a pending change.
+    const internal = watcher as unknown as {
+      debounceMap: Map<string, ReturnType<typeof setTimeout>>;
+      pendingSet: Set<string>;
+      syncCollections(): void;
+    };
+
+    const pendingNotesPath = join(notesPath, "pending.md");
+    // Plant a fake timer — we just need to verify it is cancelled.
+    const fakeTimer = setTimeout(() => {}, 60000);
+    internal.debounceMap.set(pendingNotesPath, fakeTimer);
+    // Plant a pendingSet entry for the same path.
+    internal.pendingSet.add(pendingNotesPath);
+
+    const { events, stop } = collectEvents(watcher);
+
+    try {
+      store.removeCollection("notes");
+      internal.syncCollections();
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toEqual({ type: "collection_removed", collection: "notes" });
+
+      // Debounce timer for the notes path must be cleared.
+      expect(internal.debounceMap.has(pendingNotesPath)).toBe(false);
+      // pendingSet entry must be cleared so no re-queue happens after any
+      // hypothetical in-flight indexFile() completes.
+      expect(internal.pendingSet.has(pendingNotesPath)).toBe(false);
+
+      // The docs collection must remain intact.
+      const collectionsField = (watcher as unknown as { collections: { collection: string }[] })
+        .collections;
+      expect(collectionsField.map((c) => c.collection)).toEqual(["docs"]);
+    } finally {
+      clearTimeout(fakeTimer); // in case syncCollections didn't clear it (test would still pass)
+      stop();
+      watcher.stop();
+    }
+  });
+
+  test("no events emitted when collection set is unchanged", () => {
+    const watcher = new Watcher(store, null, [{ collection: "docs", rootPath: docsPath }], {
+      debounceMs: 25,
+      syncIntervalMs: 2000,
+    });
+    const driver = watcher as unknown as { syncCollections(): void };
+    const { events, stop } = collectEvents(watcher);
+
+    try {
+      // DB already has "docs" (added in beforeEach); calling sync should be a no-op.
+      driver.syncCollections();
+      expect(events).toHaveLength(0);
+    } finally {
+      stop();
+      watcher.stop();
+    }
+  });
+
+  test("inProgressSet is NOT cleared when collection is removed (prevents concurrent indexFile race)", () => {
+    // This test validates the invariant: removing a collection from the DB must
+    // not remove its paths from inProgressSet, because doing so would allow a
+    // concurrent debounce to call runIndex() again while the original async
+    // indexFile() is still awaiting, creating two writers on the same rows.
+    const notesPath = join(tempRoot, "notes");
+    mkdirSync(notesPath, { recursive: true });
+    store.addCollection({ name: "notes", path: notesPath });
+
+    const watcher = new Watcher(
+      store,
+      null,
+      [
+        { collection: "docs", rootPath: docsPath },
+        { collection: "notes", rootPath: notesPath },
+      ],
+      { debounceMs: 25, syncIntervalMs: 2000 },
+    );
+
+    const internal = watcher as unknown as {
+      inProgressSet: Set<string>;
+      syncCollections(): void;
+    };
+
+    const inFlightPath = resolve(join(notesPath, "inflight.md"));
+    internal.inProgressSet.add(inFlightPath);
+
+    const { stop } = collectEvents(watcher);
+
+    try {
+      store.removeCollection("notes");
+      internal.syncCollections();
+
+      // inProgressSet must still contain the in-flight path.
+      expect(internal.inProgressSet.has(inFlightPath)).toBe(true);
+    } finally {
+      stop();
+      watcher.stop();
+    }
+  });
+});
 
 describe("Watcher", () => {
   test("indexes files and removes documents through watcher event handlers", async () => {
