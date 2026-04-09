@@ -7,6 +7,40 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.2.0] — 2026-04-09
+
+### Added
+
+**Core (`@seekx/core`)**
+- HyDE (Hypothetical Document Embeddings): generate a hypothetical answer and use its embedding as an additional vector retrieval pass.
+- Weighted RRF: original query results receive higher weight (2×) than expanded/HyDE results (1×), with top-rank bonus for better fusion quality.
+- Position-aware rerank blending: combine RRF ranking with cross-encoder scores instead of relying on reranker alone.
+- FTS5 snippet extraction: return highlighted keyword-in-context snippets from full-text search results.
+- Persistent LLM response cache with configurable TTL, stored in SQLite alongside the index.
+- Dynamic collection sync in watch mode: automatically detect added or removed collections without restarting the watcher.
+- Normalized result score filtering: post-fusion threshold (`min_result_score`) to suppress low-confidence results.
+
+**CLI (`seekx`)**
+- `seekx onboard` now starts a background real-time indexer after initial setup so the index is ready immediately.
+- Progress reporting for both indexing and search operations.
+- Improved search output formatting across text, JSON, and Markdown modes.
+
+### Changed
+
+- Refactored CLI command actions and output formatter for consistency.
+- Expanded query parsing is now more robust against malformed or empty LLM responses.
+
+### Fixed
+
+- Rerank document mapping: correctly associate reranker scores with their source chunks.
+- Global `--json` flag now propagates to all subcommands.
+- Configured search defaults (`default_limit`, `rerank`, `min_score`) are now honored correctly.
+- `vec_chunks` table cleanup on document deletion; hybrid search mode semantics when vector index is unavailable.
+- Watcher per-path indexing no longer skips files in subdirectories.
+- Chunk splitting now aligns on word boundaries; overlap windows respect word boundaries to avoid mid-word cuts.
+
+---
+
 ## [0.1.0] — 2026-04-08
 
 ### Added
