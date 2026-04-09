@@ -10,6 +10,17 @@
 import { describe, expect, test } from "bun:test";
 import { SeekxClient, l2normalize } from "../src/client.ts";
 
+function createMockFetch(body: unknown): typeof fetch {
+  return Object.assign(
+    async () =>
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    globalThis.fetch,
+  );
+}
+
 describe("l2normalize", () => {
   test("unit vector is unchanged (approx)", () => {
     const v = [1, 0, 0];
@@ -81,21 +92,21 @@ describe("SeekxClient.healthCheck — unreachable endpoint", () => {
 });
 
 describe("SeekxClient.rerank — response shapes", () => {
-  const rerankCfg = { baseUrl: "https://example.com/api/paas/v4", apiKey: "k", model: "rerank-pro" };
+  const rerankCfg = {
+    baseUrl: "https://example.com/api/paas/v4",
+    apiKey: "k",
+    model: "rerank-pro",
+  };
   const embedCfg = { baseUrl: "http://127.0.0.1:1", apiKey: "", model: "x" };
 
   test("maps SiliconFlow-style index + relevance_score", async () => {
     const prev = globalThis.fetch;
-    globalThis.fetch = async () =>
-      ({
-        ok: true,
-        json: async () => ({
-          results: [
-            { index: 1, relevance_score: 0.9 },
-            { index: 0, relevance_score: 0.1 },
-          ],
-        }),
-      }) as Response;
+    globalThis.fetch = createMockFetch({
+      results: [
+        { index: 1, relevance_score: 0.9 },
+        { index: 0, relevance_score: 0.1 },
+      ],
+    });
 
     const client = new SeekxClient(embedCfg, rerankCfg, null);
     const out = await client.rerank("q", ["a", "b"]);
@@ -109,16 +120,12 @@ describe("SeekxClient.rerank — response shapes", () => {
 
   test("maps Zhipu-style document + relevance_score (no index field)", async () => {
     const prev = globalThis.fetch;
-    globalThis.fetch = async () =>
-      ({
-        ok: true,
-        json: async () => ({
-          results: [
-            { document: "second", relevance_score: 0.88 },
-            { document: "first", relevance_score: 0.12 },
-          ],
-        }),
-      }) as Response;
+    globalThis.fetch = createMockFetch({
+      results: [
+        { document: "second", relevance_score: 0.88 },
+        { document: "first", relevance_score: 0.12 },
+      ],
+    });
 
     const client = new SeekxClient(embedCfg, rerankCfg, null);
     const out = await client.rerank("q", ["first", "second"]);
@@ -132,13 +139,9 @@ describe("SeekxClient.rerank — response shapes", () => {
 
   test("returns null when results cannot be aligned to documents", async () => {
     const prev = globalThis.fetch;
-    globalThis.fetch = async () =>
-      ({
-        ok: true,
-        json: async () => ({
-          results: [{ relevance_score: 0.5 }],
-        }),
-      }) as Response;
+    globalThis.fetch = createMockFetch({
+      results: [{ relevance_score: 0.5 }],
+    });
 
     const client = new SeekxClient(embedCfg, rerankCfg, null);
     const out = await client.rerank("q", ["only"]);

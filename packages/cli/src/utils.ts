@@ -4,7 +4,6 @@
 
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import type { Command } from "commander";
 import {
   SeekxClient,
   Store,
@@ -14,6 +13,7 @@ import {
   requireConfig,
 } from "@seekx/core";
 import type { Database, ResolvedConfig } from "@seekx/core";
+import type { Command } from "commander";
 
 // ---------------------------------------------------------------------------
 // Exit codes (see docs/cli-design.md §Exit Codes)

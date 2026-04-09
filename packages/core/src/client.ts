@@ -125,7 +125,7 @@ export class SeekxClient {
 
       if (mapped.length === 0 && data.results.length > 0) {
         console.error(
-          `[seekx] rerank: could not map results to input documents (missing index/document fields).`,
+          "[seekx] rerank: could not map results to input documents (missing index/document fields).",
         );
         return null;
       }

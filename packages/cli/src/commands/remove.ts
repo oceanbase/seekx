@@ -14,38 +14,40 @@ export function registerRemove(program: Command): void {
     .description("Remove a collection and all its indexed data")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("--json", "Machine-readable output")
-    .action(async (collection: string, opts: { yes?: boolean; json?: boolean }, command: Command) => {
-      const json = resolveJson(opts, command);
-      const ctx = await openContext({ json });
-      const { store } = ctx;
+    .action(
+      async (collection: string, opts: { yes?: boolean; json?: boolean }, command: Command) => {
+        const json = resolveJson(opts, command);
+        const ctx = await openContext({ json });
+        const { store } = ctx;
 
-      const col = store.getCollection(collection);
-      if (!col) {
-        die(`Collection '${collection}' not found.`, EXIT.USER_ERROR, json);
-      }
-
-      if (!opts.yes && !json) {
-        const { createInterface } = await import("node:readline");
-        const rl = createInterface({ input: process.stdin, output: process.stdout });
-        const answer = await new Promise<string>((resolve) =>
-          rl.question(`Remove collection '${collection}' (${col.path})? [y/N] `, resolve),
-        );
-        rl.close();
-        if (answer.toLowerCase() !== "y") {
-          console.log("Aborted.");
-          ctx.db.close();
-          process.exit(EXIT.OK);
+        const col = store.getCollection(collection);
+        if (!col) {
+          die(`Collection '${collection}' not found.`, EXIT.USER_ERROR, json);
         }
-      }
 
-      store.removeCollection(collection);
+        if (!opts.yes && !json) {
+          const { createInterface } = await import("node:readline");
+          const rl = createInterface({ input: process.stdin, output: process.stdout });
+          const answer = await new Promise<string>((resolve) =>
+            rl.question(`Remove collection '${collection}' (${col.path})? [y/N] `, resolve),
+          );
+          rl.close();
+          if (answer.toLowerCase() !== "y") {
+            console.log("Aborted.");
+            ctx.db.close();
+            process.exit(EXIT.OK);
+          }
+        }
 
-      if (json) {
-        console.log(JSON.stringify({ removed: collection }));
-      } else {
-        console.log(`Collection '${collection}' removed.`);
-      }
+        store.removeCollection(collection);
 
-      ctx.db.close();
-    });
+        if (json) {
+          console.log(JSON.stringify({ removed: collection }));
+        } else {
+          console.log(`Collection '${collection}' removed.`);
+        }
+
+        ctx.db.close();
+      },
+    );
 }

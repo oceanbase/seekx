@@ -17,7 +17,11 @@ export function registerReindex(program: Command): void {
     .option("--reset-vec", "Drop and recreate the vector table (required on embed model change)")
     .option("--json", "Machine-readable output")
     .action(
-      async (collection: string | undefined, opts: { resetVec?: boolean; json?: boolean }, command: Command) => {
+      async (
+        collection: string | undefined,
+        opts: { resetVec?: boolean; json?: boolean },
+        command: Command,
+      ) => {
         const json = resolveJson(opts, command);
         const ctx = await openContext({ json });
         const { store, client, cfg } = ctx;
