@@ -9,6 +9,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { indexDirectory } from "@seekx/core";
 import type { Command } from "commander";
+import { createIndexProgressReporter } from "../progress.ts";
 import { EXIT, die, openContext, resolveJson, warn } from "../utils.ts";
 
 export function registerAdd(program: Command): void {
@@ -57,7 +58,7 @@ export function registerAdd(program: Command): void {
           console.log(`Indexing '${name}' → ${realPath}`);
         }
 
-        let lastPrint = 0;
+        const onProgress = createIndexProgressReporter({ enabled: !json });
         const result = await indexDirectory(
           store,
           client,
@@ -65,21 +66,13 @@ export function registerAdd(program: Command): void {
           realPath,
           "**/*.{md,markdown,txt}",
           cfg.watch.ignore,
-          (indexed, total, filePath) => {
-            const now = Date.now();
-            if (!json && now - lastPrint > 500) {
-              lastPrint = now;
-              process.stdout.write(`\r  ${indexed}/${total} — ${basename(filePath)}          `);
-            }
-          },
+          onProgress,
         );
-
-        if (!json) process.stdout.write("\n");
 
         if (json) {
           console.log(JSON.stringify({ name, path: realPath, ...result }, null, 2));
         } else {
-          console.log(`\nDone. Indexed ${result.indexed} files, skipped ${result.skipped}.`);
+          console.log(`Done. Indexed ${result.indexed} files, skipped ${result.skipped}.`);
           if (result.errors.length > 0) {
             warn(`${result.errors.length} error(s) during indexing:`);
             for (const e of result.errors) warn(`  ${e.path}: ${e.error}`);

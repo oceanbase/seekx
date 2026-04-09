@@ -28,10 +28,16 @@ export {
 export type { ResolvedConfig, RawConfig, ServiceEndpoint } from "./config.ts";
 
 export { indexFile, indexDirectory } from "./indexer.ts";
-export type { IndexFileResult, IndexFileStatus, IndexDirectoryResult } from "./indexer.ts";
+export type {
+  IndexFileResult,
+  IndexFileStatus,
+  IndexDirectoryResult,
+  IndexProgressEvent,
+  IndexProgressCallback,
+} from "./indexer.ts";
 
 export { hybridSearch } from "./search.ts";
-export type { SearchOptions, SearchResult } from "./search.ts";
+export type { SearchOptions, SearchResult, SearchProgressEvent, SearchProgressCallback } from "./search.ts";
 
 export { Watcher } from "./watcher.ts";
 export type { WatcherEvent, WatchOptions, CollectionWatch } from "./watcher.ts";

@@ -27,7 +27,36 @@ const EMBED_BATCH_SIZE = 32;
 
 const SUPPORTED_EXTENSIONS = new Set([".md", ".markdown", ".txt"]);
 
-export type ProgressCallback = (indexed: number, total: number, filePath: string) => void;
+export type IndexProgressEvent =
+  | { phase: "scan_start"; rootPath: string }
+  | {
+      phase: "scan_progress";
+      rootPath: string;
+      discovered: number;
+      filePath: string;
+      relativePath: string;
+    }
+  | { phase: "scan_done"; rootPath: string; totalFiles: number }
+  | { phase: "index_start"; rootPath: string; totalFiles: number }
+  | {
+      phase: "index_progress";
+      rootPath: string;
+      completed: number;
+      totalFiles: number;
+      filePath: string;
+      relativePath: string;
+      status: IndexFileStatus;
+    }
+  | {
+      phase: "done";
+      rootPath: string;
+      indexed: number;
+      skipped: number;
+      errors: number;
+      totalFiles: number;
+    };
+
+export type IndexProgressCallback = (event: IndexProgressEvent) => void;
 
 export type IndexFileStatus = "indexed" | "skipped" | "mtime_only" | "error";
 
@@ -173,7 +202,7 @@ async function embedChunks(
  * @param rootPath   Absolute path to the collection root.
  * @param pattern    Glob pattern relative to rootPath.
  * @param ignore     Path patterns to skip.
- * @param onProgress Optional per-file progress callback.
+ * @param onProgress Optional structured progress callback.
  */
 export async function indexDirectory(
   store: Store,
@@ -182,10 +211,12 @@ export async function indexDirectory(
   rootPath: string,
   pattern: string,
   ignore: string[],
-  onProgress?: ProgressCallback,
+  onProgress?: IndexProgressCallback,
 ): Promise<IndexDirectoryResult> {
   const absRoot = resolve(rootPath);
   const files: string[] = [];
+
+  onProgress?.({ phase: "scan_start", rootPath: absRoot });
 
   // Use Bun's built-in Glob which is available in all Bun versions.
   const { Glob } = await import("bun");
@@ -194,8 +225,18 @@ export async function indexDirectory(
     const absPath = resolve(absRoot, entry);
     if (!isIgnored(absPath, absRoot, ignore)) {
       files.push(absPath);
+      onProgress?.({
+        phase: "scan_progress",
+        rootPath: absRoot,
+        discovered: files.length,
+        filePath: absPath,
+        relativePath: entry,
+      });
     }
   }
+
+  onProgress?.({ phase: "scan_done", rootPath: absRoot, totalFiles: files.length });
+  onProgress?.({ phase: "index_start", rootPath: absRoot, totalFiles: files.length });
 
   let indexed = 0;
   let skipped = 0;
@@ -204,8 +245,6 @@ export async function indexDirectory(
   for (let i = 0; i < files.length; i++) {
     const filePath = files[i];
     if (!filePath) continue;
-    onProgress?.(i + 1, files.length, filePath);
-
     const result = await indexFile(store, client, collection, filePath);
 
     if (result.status === "indexed" || result.status === "mtime_only") {
@@ -215,7 +254,26 @@ export async function indexDirectory(
     } else {
       errors.push({ path: filePath, error: result.error ?? "unknown error" });
     }
+
+    onProgress?.({
+      phase: "index_progress",
+      rootPath: absRoot,
+      completed: i + 1,
+      totalFiles: files.length,
+      filePath,
+      relativePath: relativeToRoot(filePath, absRoot),
+      status: result.status,
+    });
   }
+
+  onProgress?.({
+    phase: "done",
+    rootPath: absRoot,
+    indexed,
+    skipped,
+    errors: errors.length,
+    totalFiles: files.length,
+  });
 
   return { indexed, skipped, errors, totalFiles: files.length };
 }
@@ -250,4 +308,8 @@ function isIgnored(absPath: string, absRoot: string, patterns: string[]): boolea
     }
   }
   return false;
+}
+
+function relativeToRoot(absPath: string, absRoot: string): string {
+  return absPath.startsWith(`${absRoot}/`) ? absPath.slice(absRoot.length + 1) : absPath;
 }

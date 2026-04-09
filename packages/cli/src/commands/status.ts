@@ -9,6 +9,7 @@
 import { isEmbedConfigured } from "@seekx/core";
 import type { Command } from "commander";
 import { formatStatus } from "../formatter.ts";
+import { createStatusReporter } from "../progress.ts";
 import { openContext, resolveJson } from "../utils.ts";
 
 export function registerStatus(program: Command): void {
@@ -23,7 +24,14 @@ export function registerStatus(program: Command): void {
 
       let embedOk: boolean | null = null;
       if (client && isEmbedConfigured(cfg)) {
-        const h = await client.healthCheck();
+        const progress = createStatusReporter({ enabled: !json });
+        let h;
+        progress.update("Checking API health...");
+        try {
+          h = await client.healthCheck();
+        } finally {
+          progress.clear();
+        }
         embedOk = h.embed?.ok ?? false;
       }
 

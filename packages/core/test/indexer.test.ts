@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDatabase } from "../src/db.ts";
 import type { Database } from "../src/db.ts";
-import { type IndexFileStatus, indexFile } from "../src/indexer.ts";
+import { type IndexFileStatus, type IndexProgressEvent, indexDirectory, indexFile } from "../src/indexer.ts";
 import { Store } from "../src/store.ts";
 
 // ---------------------------------------------------------------------------
@@ -114,5 +114,72 @@ describe("indexFile — plain text", () => {
     const p = writeDoc("notes.txt", "Line one.\n\nLine two.\n\nLine three.");
     const result = await indexFile(store, NULL_CLIENT, "test", p);
     expect(result.status).toBe("indexed");
+  });
+});
+
+describe("indexDirectory — progress events", () => {
+  test("emits scan and index phases with relative paths", async () => {
+    writeDoc("root.md", "# Root\n\nHello");
+    mkdirSync(join(tmpDir, "nested"), { recursive: true });
+    writeFileSync(join(tmpDir, "nested", "child.txt"), "Nested text", "utf-8");
+
+    const events: IndexProgressEvent[] = [];
+    const result = await indexDirectory(
+      store,
+      NULL_CLIENT,
+      "test",
+      tmpDir,
+      "**/*.{md,txt}",
+      [],
+      (event) => events.push(event),
+    );
+
+    expect(result.totalFiles).toBe(2);
+
+    const phases = events.map((event) => event.phase);
+    expect(phases[0]).toBe("scan_start");
+    expect(phases.at(-1)).toBe("done");
+    expect(phases).toContain("scan_done");
+    expect(phases).toContain("index_start");
+
+    const scanEvents = events.filter(
+      (event): event is Extract<IndexProgressEvent, { phase: "scan_progress" }> =>
+        event.phase === "scan_progress",
+    );
+    expect(scanEvents).toHaveLength(2);
+    expect(scanEvents.map((event) => event.relativePath).sort()).toEqual([
+      "nested/child.txt",
+      "root.md",
+    ]);
+
+    const scanDone = events.find(
+      (event): event is Extract<IndexProgressEvent, { phase: "scan_done" }> =>
+        event.phase === "scan_done",
+    );
+    expect(scanDone?.totalFiles).toBe(2);
+
+    const indexEvents = events.filter(
+      (event): event is Extract<IndexProgressEvent, { phase: "index_progress" }> =>
+        event.phase === "index_progress",
+    );
+    expect(indexEvents).toHaveLength(2);
+    expect(indexEvents.map((event) => event.completed)).toEqual([1, 2]);
+    expect(indexEvents.every((event) => event.status === "indexed")).toBe(true);
+    expect(indexEvents.map((event) => event.relativePath).sort()).toEqual([
+      "nested/child.txt",
+      "root.md",
+    ]);
+
+    const done = events.find(
+      (event): event is Extract<IndexProgressEvent, { phase: "done" }> => event.phase === "done",
+    );
+    expect(done).toEqual({
+      phase: "done",
+      rootPath: tmpDir,
+      indexed: 2,
+      skipped: 0,
+      errors: 0,
+      totalFiles: 2,
+    });
   });
 });

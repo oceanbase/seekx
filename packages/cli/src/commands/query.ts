@@ -13,6 +13,7 @@
 import { hybridSearch } from "@seekx/core";
 import type { Command } from "commander";
 import { formatSearchResults } from "../formatter.ts";
+import { createSearchProgressReporter } from "../progress.ts";
 import { EXIT, die, openContext, resolveJson, warn } from "../utils.ts";
 
 export function registerQuery(program: Command): void {
@@ -39,13 +40,21 @@ export function registerQuery(program: Command): void {
           die("--limit must be a positive integer.", EXIT.USER_ERROR, json);
         }
 
-        const { results, expandedQueries, warnings } = await hybridSearch(store, client, question, {
-          ...(opts.collection ? { collections: [opts.collection] } : {}),
-          limit,
-          mode: "hybrid",
-          useRerank: cfg.search.rerank,
-          useExpand: true,
-        });
+        const progress = createSearchProgressReporter({ enabled: !json });
+        let searchResult;
+        try {
+          searchResult = await hybridSearch(store, client, question, {
+            ...(opts.collection ? { collections: [opts.collection] } : {}),
+            limit,
+            mode: "hybrid",
+            useRerank: cfg.search.rerank,
+            useExpand: true,
+            onProgress: progress.onProgress,
+          });
+        } finally {
+          progress.finish();
+        }
+        const { results, expandedQueries, warnings } = searchResult;
 
         for (const w of warnings) warn(w);
 

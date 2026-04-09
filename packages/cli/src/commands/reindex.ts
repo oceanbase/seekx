@@ -5,9 +5,9 @@
  * Drops and rebuilds vec_chunks when --reset-vec is given (dimension change).
  */
 
-import { basename } from "node:path";
 import { indexDirectory } from "@seekx/core";
 import type { Command } from "commander";
+import { createIndexProgressReporter } from "../progress.ts";
 import { EXIT, die, openContext, resolveJson, warn } from "../utils.ts";
 
 export function registerReindex(program: Command): void {
@@ -52,7 +52,7 @@ export function registerReindex(program: Command): void {
           // Delete all existing docs for the collection so indexFile re-creates them.
           store.deleteAllDocuments(col.name);
 
-          let lastPrint = 0;
+          const onProgress = createIndexProgressReporter({ enabled: !json });
           const result = await indexDirectory(
             store,
             client,
@@ -60,16 +60,8 @@ export function registerReindex(program: Command): void {
             col.path,
             "**/*.{md,markdown,txt}",
             cfg.watch.ignore,
-            (indexed, total, filePath) => {
-              const now = Date.now();
-              if (!json && now - lastPrint > 500) {
-                lastPrint = now;
-                process.stdout.write(`\r  ${indexed}/${total} — ${basename(filePath)}          `);
-              }
-            },
+            onProgress,
           );
-
-          if (!json) process.stdout.write("\n");
 
           if (result.errors.length > 0) {
             for (const e of result.errors) warn(`  ${e.path}: ${e.error}`);

@@ -11,7 +11,7 @@ export function registerRemove(program: Command): void {
   program
     .command("remove <collection>")
     .alias("rm")
-    .description("Remove a collection and all its indexed data")
+    .description("Remove a collection from the index (original files are NOT deleted)")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("--json", "Machine-readable output")
     .action(
@@ -29,7 +29,12 @@ export function registerRemove(program: Command): void {
           const { createInterface } = await import("node:readline");
           const rl = createInterface({ input: process.stdin, output: process.stdout });
           const answer = await new Promise<string>((resolve) =>
-            rl.question(`Remove collection '${collection}' (${col.path})? [y/N] `, resolve),
+            rl.question(
+              `Remove index for '${collection}' (${col.path})?\n` +
+                `  Your files will NOT be deleted — only the seekx index entries.\n` +
+                `  Confirm [y/N] `,
+              resolve,
+            ),
           );
           rl.close();
           if (answer.toLowerCase() !== "y") {
@@ -44,7 +49,7 @@ export function registerRemove(program: Command): void {
         if (json) {
           console.log(JSON.stringify({ removed: collection }));
         } else {
-          console.log(`Collection '${collection}' removed.`);
+          console.log(`Index for collection '${collection}' removed. Your files are untouched.`);
         }
 
         ctx.db.close();

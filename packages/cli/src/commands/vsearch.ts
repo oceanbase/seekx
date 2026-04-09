@@ -8,6 +8,7 @@
 import { hybridSearch } from "@seekx/core";
 import type { Command } from "commander";
 import { formatSearchResults } from "../formatter.ts";
+import { createSearchProgressReporter } from "../progress.ts";
 import { EXIT, die, openContext, resolveJson, warn } from "../utils.ts";
 
 export function registerVsearch(program: Command): void {
@@ -41,13 +42,21 @@ export function registerVsearch(program: Command): void {
           die("--limit must be a positive integer.", EXIT.USER_ERROR, json);
         }
 
-        const { results, warnings } = await hybridSearch(store, client, query, {
-          ...(opts.collection ? { collections: [opts.collection] } : {}),
-          limit,
-          mode: "vector",
-          useRerank: false,
-          useExpand: false,
-        });
+        const progress = createSearchProgressReporter({ enabled: !json });
+        let searchResult;
+        try {
+          searchResult = await hybridSearch(store, client, query, {
+            ...(opts.collection ? { collections: [opts.collection] } : {}),
+            limit,
+            mode: "vector",
+            useRerank: false,
+            useExpand: false,
+            onProgress: progress.onProgress,
+          });
+        } finally {
+          progress.finish();
+        }
+        const { results, warnings } = searchResult;
 
         for (const w of warnings) warn(w);
 

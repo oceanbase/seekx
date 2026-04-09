@@ -29,7 +29,27 @@ export interface SearchOptions {
   mode?: "hybrid" | "bm25" | "vector";
   useRerank?: boolean;
   useExpand?: boolean;
+  onProgress?: SearchProgressCallback;
 }
+
+export type SearchProgressEvent =
+  | {
+      phase: "start";
+      mode: "hybrid" | "bm25" | "vector";
+      useExpand: boolean;
+      useRerank: boolean;
+    }
+  | { phase: "expand_start"; query: string }
+  | { phase: "expand_done"; expandedQueries: string[] }
+  | { phase: "bm25_start"; totalQueries: number }
+  | { phase: "bm25_progress"; completed: number; totalQueries: number; query: string }
+  | { phase: "vector_start"; totalQueries: number }
+  | { phase: "vector_progress"; completed: number; totalQueries: number; query: string }
+  | { phase: "rerank_start"; candidateCount: number }
+  | { phase: "rerank_done"; candidateCount: number; applied: boolean }
+  | { phase: "done"; resultCount: number; warningCount: number };
+
+export type SearchProgressCallback = (event: SearchProgressEvent) => void;
 
 export interface SearchResult {
   docid: string; // short hex id (encodeDocid)
@@ -59,16 +79,21 @@ export async function hybridSearch(
   const useRerank = opts.useRerank ?? true;
   const useExpand = opts.useExpand ?? true;
   const collections = opts.collections;
+  const onProgress = opts.onProgress;
   const warnings: string[] = [];
+
+  onProgress?.({ phase: "start", mode, useExpand, useRerank });
 
   // --- Step 1: Query expansion ---
   let expandedQueries = [query];
   if (useExpand && client && mode !== "bm25") {
+    onProgress?.({ phase: "expand_start", query });
     const expanded = await client.expand(query);
     if (expanded) {
       expandedQueries = expanded;
     }
     // No warning if expand unavailable — degradation is transparent.
+    onProgress?.({ phase: "expand_done", expandedQueries });
   }
 
   // --- Step 2: BM25 + Vector for each expanded query ---
@@ -76,8 +101,10 @@ export async function hybridSearch(
   const allRawResults: Array<{ results: RawResult[]; listId: string }> = [];
 
   if (mode === "hybrid" || mode === "bm25") {
+    onProgress?.({ phase: "bm25_start", totalQueries: expandedQueries.length });
     for (const [i, q] of expandedQueries.entries()) {
       const ftsQuery = buildFTSQuery(q);
+      onProgress?.({ phase: "bm25_progress", completed: i + 1, totalQueries: expandedQueries.length, query: q });
       if (!ftsQuery) continue;
       try {
         const results = store.searchFTS(ftsQuery, candidateLimit, collections);
@@ -89,7 +116,14 @@ export async function hybridSearch(
   }
 
   if ((mode === "hybrid" || mode === "vector") && client) {
+    onProgress?.({ phase: "vector_start", totalQueries: expandedQueries.length });
     for (const [i, q] of expandedQueries.entries()) {
+      onProgress?.({
+        phase: "vector_progress",
+        completed: i + 1,
+        totalQueries: expandedQueries.length,
+        query: q,
+      });
       const vecs = await client.embed([q]);
       if (!vecs || !vecs[0]) {
         if (mode === "vector") warnings.push("Vector search unavailable: embed API failed.");
@@ -103,6 +137,7 @@ export async function hybridSearch(
   }
 
   if (allRawResults.length === 0) {
+    onProgress?.({ phase: "done", resultCount: 0, warningCount: warnings.length });
     return { results: [], expandedQueries, warnings };
   }
 
@@ -113,6 +148,7 @@ export async function hybridSearch(
   // --- Step 4: Rerank ---
   let finalRaw = topCandidates;
   if (useRerank && client && topCandidates.length > 1) {
+    onProgress?.({ phase: "rerank_start", candidateCount: topCandidates.length });
     const reranked = await client.rerank(
       query,
       topCandidates.map((r) => r.content),
@@ -120,6 +156,11 @@ export async function hybridSearch(
     if (reranked) {
       finalRaw = applyRerank(topCandidates, reranked);
     }
+    onProgress?.({
+      phase: "rerank_done",
+      candidateCount: topCandidates.length,
+      applied: reranked !== null,
+    });
   }
 
   // --- Step 5: Format results ---
@@ -137,6 +178,8 @@ export async function hybridSearch(
     start_line: raw.start_line,
     end_line: raw.end_line,
   }));
+
+  onProgress?.({ phase: "done", resultCount: results.length, warningCount: warnings.length });
 
   return {
     results,

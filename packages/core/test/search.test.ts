@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { SeekxClient } from "../src/client.ts";
 import { openDatabase } from "../src/db.ts";
 import type { Database } from "../src/db.ts";
-import { hybridSearch } from "../src/search.ts";
+import { type SearchProgressEvent, hybridSearch } from "../src/search.ts";
 import { Store } from "../src/store.ts";
 
 // ---------------------------------------------------------------------------
@@ -137,5 +137,62 @@ describe("hybridSearch — client fail-open", () => {
     });
     // Should still get BM25 results despite failed embed
     expect(results.length).toBeGreaterThan(0);
+  });
+
+  test("emits structured phase events for hybrid search", async () => {
+    const events: SearchProgressEvent[] = [];
+    const docC = store.upsertDocument({
+      collection: "col",
+      path: "/col/c.md",
+      title: "Gamma",
+      mtime: 1,
+      hash: "hc",
+    });
+    const cC = store.insertChunk({
+      doc_id: docC,
+      chunk_idx: 0,
+      content: "machine systems architecture",
+      heading_path: null,
+      start_line: 0,
+      end_line: 3,
+      token_count: 3,
+    });
+    store.insertFTS(cC, "machine systems architecture");
+
+    const client = {
+      expand: async () => ["machine", "ml systems"],
+      embed: async () => [[1, 0, 0]],
+      rerank: async () => null,
+      healthCheck: async () => ({ embed: null, rerank: null, expand: null }),
+    } as unknown as SeekxClient;
+
+    await hybridSearch(store, client, "machine", {
+      mode: "hybrid",
+      useExpand: true,
+      useRerank: true,
+      onProgress: (event) => events.push(event),
+    });
+
+    expect(events[0]).toMatchObject({ phase: "start", mode: "hybrid" });
+    expect(events.some((event) => event.phase === "expand_start")).toBe(true);
+    expect(events).toContainEqual({ phase: "expand_done", expandedQueries: ["machine", "ml systems"] });
+    expect(events).toContainEqual({ phase: "bm25_start", totalQueries: 2 });
+    expect(events).toContainEqual({ phase: "vector_start", totalQueries: 2 });
+    expect(events).toContainEqual({ phase: "rerank_start", candidateCount: 2 });
+    expect(events).toContainEqual({ phase: "rerank_done", candidateCount: 2, applied: false });
+
+    const bm25Progress = events.filter(
+      (event): event is Extract<SearchProgressEvent, { phase: "bm25_progress" }> =>
+        event.phase === "bm25_progress",
+    );
+    expect(bm25Progress.map((event) => event.completed)).toEqual([1, 2]);
+
+    const vectorProgress = events.filter(
+      (event): event is Extract<SearchProgressEvent, { phase: "vector_progress" }> =>
+        event.phase === "vector_progress",
+    );
+    expect(vectorProgress.map((event) => event.completed)).toEqual([1, 2]);
+
+    expect(events.at(-1)).toMatchObject({ phase: "done", warningCount: 0 });
   });
 });
