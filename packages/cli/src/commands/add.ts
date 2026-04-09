@@ -7,7 +7,7 @@
 
 import { existsSync, realpathSync } from "node:fs";
 import { basename, resolve } from "node:path";
-import { indexDirectory } from "@seekx/core";
+import { indexDirectory } from "seekx-core";
 import type { Command } from "commander";
 import { createIndexProgressReporter } from "../progress.ts";
 import { EXIT, die, openContext, resolveJson, warn } from "../utils.ts";

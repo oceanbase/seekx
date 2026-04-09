@@ -6,7 +6,7 @@
  * embed model name and dimension.
  */
 
-import { isEmbedConfigured } from "@seekx/core";
+import { isEmbedConfigured } from "seekx-core";
 import type { Command } from "commander";
 import { formatStatus } from "../formatter.ts";
 import { createStatusReporter } from "../progress.ts";

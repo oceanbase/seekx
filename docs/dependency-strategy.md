@@ -15,7 +15,7 @@ JavaScript. This is the primary differentiator from qmd (which requires download
 
 ## Dependency Inventory
 
-### `@seekx/core`
+### `seekx-core`
 
 | Package | Purpose | Distribution | Friction risk |
 |---------|---------|-------------|---------------|

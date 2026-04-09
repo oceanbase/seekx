@@ -3,7 +3,7 @@ import type {
   IndexProgressEvent,
   SearchProgressCallback,
   SearchProgressEvent,
-} from "@seekx/core";
+} from "seekx-core";
 
 interface ProgressStream {
   write(chunk: string): boolean;
@@ -219,6 +219,10 @@ function formatSearchProgressMessage(event: SearchProgressEvent): string | null 
       return event.totalQueries > 1
         ? `Embedding and vector searching (${event.completed}/${event.totalQueries})...`
         : "Embedding query and running vector search...";
+    case "hyde_start":
+      return "Generating hypothetical answer (HyDE)...";
+    case "hyde_done":
+      return event.success ? "HyDE vector search complete." : "HyDE skipped.";
     case "rerank_start":
       return `Reranking top ${event.candidateCount} candidates...`;
     case "rerank_done":

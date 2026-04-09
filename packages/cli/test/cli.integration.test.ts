@@ -3,9 +3,9 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { format } from "node:util";
-import type { IndexProgressEvent, SearchProgressEvent } from "@seekx/core";
-import { openDatabase } from "@seekx/core";
-import { Store } from "@seekx/core";
+import type { IndexProgressEvent, SearchProgressEvent } from "seekx-core";
+import { openDatabase } from "seekx-core";
+import { Store } from "seekx-core";
 import { createProgram } from "../src/program.ts";
 import {
   createIndexProgressReporter,

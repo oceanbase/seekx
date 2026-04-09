@@ -1,9 +1,18 @@
 {
   "name": "seekx",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/oceanbase/seekx.git",
+    "directory": "packages/cli"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
   "bin": {
-    "seekx": "./src/seekx.ts"
+    "seekx": "./bin/seekx.js"
   },
   "scripts": {
     "test": "bun test test/program.test.ts && bun test test/formatter.test.ts && bun test test/cli.integration.test.ts",
@@ -12,7 +21,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.10.2",
-    "@seekx/core": "workspace:*",
+    "seekx-core": "workspace:*",
     "commander": "^13.1.0",
     "@inquirer/prompts": "^7.5.0",
     "zod": "^3.24.2"

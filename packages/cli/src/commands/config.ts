@@ -12,7 +12,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { loadConfig, writeConfigKey } from "@seekx/core";
+import { loadConfig, writeConfigKey } from "seekx-core";
 import type { Command } from "commander";
 import { EXIT, die, resolveJson } from "../utils.ts";
 

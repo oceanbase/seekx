@@ -11,8 +11,8 @@ import {
   loadSqliteVec,
   openDatabase,
   requireConfig,
-} from "@seekx/core";
-import type { Database, ResolvedConfig } from "@seekx/core";
+} from "seekx-core";
+import type { Database, ResolvedConfig } from "seekx-core";
 import type { Command } from "commander";
 
 // ---------------------------------------------------------------------------

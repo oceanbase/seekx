@@ -1,42 +1,50 @@
 <p align="center">
+  <img src="assets/hero.png" alt="seekx — Seek Context for AI Agents and You" width="100%">
   <h1 align="center">seekx</h1>
   <p align="center">
     Context search engine for AI agents and humans.<br/>
     Your files are the truth, seekx is just the index.<br/>
     <b>No GPU. Hybrid Search. Realtime Index.</b>
   </p>
+  <p align="center">
+    <a href="https://www.npmjs.com/package/seekx"><img src="https://img.shields.io/npm/v/seekx" alt="npm version"></a>
+    <a href="https://www.npmjs.com/package/seekx"><img src="https://img.shields.io/npm/dm/seekx" alt="npm downloads"></a>
+    <a href="https://github.com/oceanbase/seekx/stargazers"><img src="https://img.shields.io/github/stars/oceanbase/seekx" alt="GitHub stars"></a>
+    <a href="https://github.com/oceanbase/seekx/blob/main/LICENSE"><img src="https://img.shields.io/github/license/oceanbase/seekx" alt="license"></a>
+  </p>
 </p>
 
 ---
 
-Index once, find anything. seekx brings hybrid search — BM25 keyword precision **plus** semantic understanding — to your local documents. No GPU, no model downloads, no infrastructure. Just your files and a single command.
+Index once, find anything. seekx brings hybrid search to your local documents — just your files and a single command.
 
 ```
 seekx add ~/notes
-seekx search "how does raft consensus work"
+seekx search "how do agents use tool calling"
 ```
 
 That's it. Your notes are indexed, and you're searching.
 
 ## Why seekx?
 
-| Pain point | How seekx solves it |
+You have hundreds of Markdown files, notes, docs — scattered across folders. Spotlight finds filenames. Grep finds exact strings. Neither understands what you're *looking for*.
+
+seekx does.
+
+| What you get | How |
 |---|---|
-| Local embedding models are huge and slow to set up | **Remote embeddings** — any OpenAI-compatible API (SiliconFlow, Jina, Ollama, OpenAI…). Zero model download. |
-| BM25 or vectors alone miss results | **Hybrid search** — BM25 + vector + RRF fusion. Optional cross-encoder reranking and query expansion for even better recall. |
-| Index gets stale as you edit files | **Realtime index** — save a file, search it instantly. The index stays up to date as you work. |
-| CJK full-text search is an afterthought | **CJK-ready** — Jieba-based tokenization for Chinese, Japanese, and Korean. No native extension needed. |
+| **Find by meaning, not just keywords** | Hybrid search fuses BM25 keyword matching with vector semantic search via RRF — you get results whether you remember the exact words or not. |
+| **Up and running in 2 minutes** | No GPU, no model downloads, no Docker. Point it at any OpenAI-compatible API and go. |
+| **Always in sync** | Edit a file, search it instantly. The index updates as you work — no manual rebuilds. |
+| **Works with Chinese, Japanese, Korean** | Jieba-based tokenization built in. CJK full-text search just works. |
 
 ## Features
 
-- **Hybrid search** — full-text (BM25) + semantic (vector) with Reciprocal Rank Fusion
 - **Cross-encoder reranking** — optional rerank API for higher-precision results
-- **Query expansion** — automatic query rewriting for better recall
+- **Query expansion** — automatic query rewriting via LLM for better recall
 - **HyDE** — Hypothetical Document Embeddings for improved semantic retrieval
-- **Realtime file watcher** — chokidar-based watcher keeps the index in sync as you edit
 - **Content-aware chunking** — Markdown heading-based splitting; plain-text paragraph splitting
 - **Incremental indexing** — SHA-1 content hashing skips unchanged files; only re-embeds what changed
-- **CJK tokenization** — Jieba pre-tokenization for FTS5, no native extension required
 - **JSON output** — every command supports `--json` for scripting and piping
 
 ## Quick start
@@ -48,8 +56,19 @@ That's it. Your notes are indexed, and you're searching.
 
 ### Install
 
+**From npm (recommended)** — the CLI and library are published on the npm registry: [`seekx`](https://www.npmjs.com/package/seekx) (CLI) depends on [`seekx-core`](https://www.npmjs.com/package/seekx-core). Install the CLI globally; npm pulls `seekx-core` automatically.
+
 ```bash
-git clone https://github.com/nicekid1/seekx.git
+npm install -g seekx
+# or: bun add -g seekx
+```
+
+You still need [Bun](https://bun.sh) on your `PATH` at runtime — the published CLI runs via Bun, not Node.
+
+**From source** — for development or to run unreleased commits:
+
+```bash
+git clone https://github.com/oceanbase/seekx.git
 cd seekx
 bun install
 bun link --cwd packages/cli   # makes 'seekx' available globally
@@ -85,6 +104,36 @@ seekx vsearch "semantic similarity"
 ```bash
 seekx watch          # watches all indexed collections
 ```
+
+## How search works
+
+```
+Query
+  │
+  ├─── [Query Expansion] ──► expanded queries
+  │                                │
+  ▼                                ▼
+  Original query            Expanded queries
+  │                                │
+  ├─► BM25  (weight 2×)           ├─► BM25  (weight 1×)
+  ├─► Vector (weight 2×)          ├─► Vector (weight 1×)
+  │                                │
+  │   [HyDE] ──► Vector (1×)      │
+  │                                │
+  └────────── all lists ───────────┘
+                  │
+            RRF Fusion
+                  │
+            [Rerank]
+                  │
+               Final
+```
+
+1. **Query expansion** (optional): an LLM rewrites the query into multiple variants for better recall.
+2. The original query and all expanded variants are run against **BM25** and **vector** indexes in parallel. Original results carry 2× weight in fusion; expanded results carry 1×.
+3. **HyDE** (optional): a hypothetical answer is generated and embedded as an additional vector search pass.
+4. All result lists are merged via **Reciprocal Rank Fusion** (RRF).
+5. **Reranking** (optional): a cross-encoder re-scores the fused candidates with position-aware blending.
 
 ## CLI reference
 
@@ -169,23 +218,6 @@ export SEEKX_SQLITE_PATH="$(brew --prefix sqlite)/lib/libsqlite3.dylib"
 
 `seekx onboard` will check this and guide you.
 
-## How search works
-
-```
-Query
-  │
-  ├─► BM25 (FTS5 + Jieba tokenization)  ──► results
-  │                                            │
-  ├─► Vector (sqlite-vec kNN)            ──► results ──► RRF Fusion ──► [Rerank] ──► Final
-  │                                            │
-  └─► [Query Expansion / HyDE]          ──► results
-```
-
-1. The query is run in parallel against **BM25** (full-text) and **vector** (semantic) indexes.
-2. If query expansion or HyDE is enabled, additional retrieval passes are added.
-3. All result lists are fused using **Reciprocal Rank Fusion** (RRF).
-4. If a reranker is configured, the fused results are re-scored by a cross-encoder.
-
 ## Development
 
 ```bash
@@ -195,13 +227,23 @@ bun run lint                     # biome check
 bun run format                   # biome format --write
 ```
 
+### Publishing to npm (maintainers)
+
+To release a new version, bump versions in `packages/core/package.json` and `packages/cli/package.json` as needed, then publish `seekx-core` first, then `seekx` (Bun/npm rewrite `workspace:*` to the published core version in the packed manifest):
+
+```bash
+cd packages/core && npm publish
+cd ../cli && npm publish
+```
+
+Log in with `npm login` (or your CI token) beforehand. Verify releases on the registry: [`seekx`](https://www.npmjs.com/package/seekx), [`seekx-core`](https://www.npmjs.com/package/seekx-core).
+
 ## Roadmap
 
 - [ ] MCP server — expose your knowledge base to AI agents (Claude Desktop, Cursor, etc.)
 - [ ] PDF and DOCX support
 - [ ] Multi-tenancy (isolated indexes per user/workspace)
 - [ ] Web UI for search and collection management
-- [ ] npm distribution (`npx seekx`)
 - [ ] Plugin system for custom file parsers
 
 ## License

@@ -1,4 +1,4 @@
-// Public API for @seekx/core
+// Public API for seekx-core
 
 export { openDatabase, loadSqliteVec } from "./db.ts";
 export type { Database } from "./db.ts";

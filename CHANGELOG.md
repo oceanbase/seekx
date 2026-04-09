@@ -7,11 +7,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.2.1] — 2026-04-09
+
+### Fixed
+
+- **CLI (`seekx`)**: npm registry rejected a `.ts` file as `bin`; added a `bin/seekx.js` shim so `npm install -g seekx` installs a working executable.
+
+---
+
 ## [0.2.0] — 2026-04-09
 
 ### Added
 
-**Core (`@seekx/core`)**
+**Core (`seekx-core`)**
 - HyDE (Hypothetical Document Embeddings): generate a hypothetical answer and use its embedding as an additional vector retrieval pass.
 - Weighted RRF: original query results receive higher weight (2×) than expanded/HyDE results (1×), with top-rank bonus for better fusion quality.
 - Position-aware rerank blending: combine RRF ranking with cross-encoder scores instead of relying on reranker alone.
@@ -45,7 +53,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-**Core (`@seekx/core`)**
+**Core (`seekx-core`)**
 - SQLite-backed document store with FTS5 full-text search and `sqlite-vec` vector search.
 - Chinese-language FTS5 support: pre-tokenization at index time and query expansion at search time using `@node-rs/jieba`.
 - Hybrid search pipeline: BM25 + vector KNN → Reciprocal Rank Fusion (RRF) → optional cross-encoder reranking → score normalization (top result = 1.0).

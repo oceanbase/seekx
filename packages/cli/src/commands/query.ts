@@ -10,7 +10,7 @@
  *   - Aliases as "q".
  */
 
-import { hybridSearch } from "@seekx/core";
+import { hybridSearch } from "seekx-core";
 import type { Command } from "commander";
 import { formatSearchResults } from "../formatter.ts";
 import { createSearchProgressReporter } from "../progress.ts";

@@ -14,7 +14,7 @@
  * (e.g. 'seekx add' or 'seekx remove' running in another terminal).
  */
 
-import { Watcher } from "@seekx/core";
+import { Watcher } from "seekx-core";
 import type { Command } from "commander";
 import { acquireWatchLock, releaseWatchLock } from "../lock.ts";
 import { EXIT, die, openContext, resolveJson, warn } from "../utils.ts";

@@ -17,7 +17,7 @@ export function registerMcp(program: Command): void {
     .action(async () => {
       const { McpServer } = await import("@modelcontextprotocol/sdk/server/mcp.js");
       const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
-      const { hybridSearch } = await import("@seekx/core");
+      const { hybridSearch } = await import("seekx-core");
       const { z } = await import("zod");
 
       const ctx = await openContext({});

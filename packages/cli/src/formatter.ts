@@ -20,7 +20,7 @@
  * multiple chunks from the same file are visually grouped at a glance.
  */
 
-import type { SearchResult } from "@seekx/core";
+import type { SearchResult } from "seekx-core";
 
 // ---------------------------------------------------------------------------
 // Per-file stable color

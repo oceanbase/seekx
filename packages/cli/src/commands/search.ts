@@ -5,7 +5,7 @@
  * Exits with code 1 if no results, 2 if API degraded.
  */
 
-import { hybridSearch } from "@seekx/core";
+import { hybridSearch } from "seekx-core";
 import type { Command } from "commander";
 import { formatSearchResults } from "../formatter.ts";
 import { createSearchProgressReporter } from "../progress.ts";

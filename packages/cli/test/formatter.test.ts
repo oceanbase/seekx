@@ -7,7 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { SearchResult } from "@seekx/core";
+import type { SearchResult } from "seekx-core";
 import { formatSearchResults } from "../src/formatter.ts";
 
 // ---------------------------------------------------------------------------
