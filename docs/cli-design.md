@@ -474,7 +474,7 @@ Key format follows YAML path notation with dots:
 | `rerank.base_url` | (override rerank-specific endpoint) |
 | `search.default_limit` | `10` |
 | `search.rerank` | `true` |
-| `search.min_score` | `0.3` |
+| `search.min_score` | `0.3` (absolute threshold for vector / rerank raw scores) |
 | `watch.debounce_ms` | `500` |
 
 **Examples:**
@@ -498,7 +498,7 @@ provider:
 search:
   default_limit: 10
   rerank:        true
-  min_score:     0.3
+  min_score:     0.3   # absolute threshold for vector / rerank raw scores
 
 watch:
   debounce_ms:   500

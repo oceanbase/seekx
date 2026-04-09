@@ -26,6 +26,7 @@ const RRF_K = 60;
 export interface SearchOptions {
   collections?: string[];
   limit?: number;
+  minScore?: number;
   mode?: "hybrid" | "bm25" | "vector";
   useRerank?: boolean;
   useExpand?: boolean;
@@ -75,6 +76,10 @@ export async function hybridSearch(
   opts: SearchOptions = {},
 ): Promise<{ results: SearchResult[]; expandedQueries: string[]; warnings: string[] }> {
   const limit = opts.limit ?? 10;
+  const minScore =
+    typeof opts.minScore === "number" && Number.isFinite(opts.minScore)
+      ? Math.min(1, Math.max(0, opts.minScore))
+      : 0;
   const mode = opts.mode ?? "hybrid";
   const useRerank = opts.useRerank ?? true;
   const useExpand = opts.useExpand ?? true;
@@ -129,7 +134,9 @@ export async function hybridSearch(
         if (mode === "vector") warnings.push("Vector search unavailable: embed API failed.");
         break;
       }
-      const results = store.searchVector(vecs[0], candidateLimit, collections);
+      const results = store
+        .searchVector(vecs[0], candidateLimit, collections)
+        .filter((raw) => raw.score >= minScore);
       if (results.length > 0) {
         allRawResults.push({ results, listId: `vec-${i}` });
       }
@@ -154,7 +161,7 @@ export async function hybridSearch(
       topCandidates.map((r) => r.content),
     );
     if (reranked) {
-      finalRaw = applyRerank(topCandidates, reranked);
+      finalRaw = applyRerank(topCandidates, reranked).filter((raw) => raw.score >= minScore);
     }
     onProgress?.({
       phase: "rerank_done",
@@ -164,16 +171,17 @@ export async function hybridSearch(
   }
 
   // --- Step 5: Format results ---
-  // Normalize scores so the top result = 1.0, others are relative.
+  // minScore is enforced earlier on raw vector / rerank scores. Display scores
+  // remain normalized so the top visible result is always 1.0.
+  const topScore = finalRaw[0]?.score ?? 1;
   const sliced = finalRaw.slice(0, limit);
-  const topScore = sliced[0]?.score ?? 1;
   const results: SearchResult[] = sliced.map((raw) => ({
     docid: store.encodeDocid(raw.doc_id),
     chunk_id: raw.chunk_id,
     file: raw.path,
     title: raw.title,
     collection: raw.collection,
-    score: topScore > 0 ? Math.min(1, raw.score / topScore) : 0,
+    score: normalizeScore(raw.score, topScore),
     snippet: extractSnippet(raw.content, query, 180),
     start_line: raw.start_line,
     end_line: raw.end_line,
@@ -223,6 +231,10 @@ function applyRerank(candidates: RawResult[], reranked: RerankResult[]): RawResu
     const raw = candidates[index];
     return raw ? [{ ...raw, score }] : [];
   });
+}
+
+function normalizeScore(score: number, topScore: number): number {
+  return topScore > 0 ? Math.min(1, score / topScore) : 0;
 }
 
 // ---------------------------------------------------------------------------

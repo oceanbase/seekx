@@ -149,7 +149,7 @@ expand:                         # optional — automatic query rewriting
 search:
   default_limit: 10
   rerank: true
-  min_score: 0.3
+  min_score: 0.3      # absolute threshold for vector / rerank raw scores
 
 watch:
   debounce_ms: 500

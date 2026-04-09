@@ -333,4 +333,20 @@ describe("CLI integration", () => {
     expect(result.stdout).toContain("Vector Notes");
     expect(result.stdout).not.toContain("Preparing search...");
   });
+
+  test("search uses config default_limit when --limit is omitted", async () => {
+    writeFileSync(configPath, "search:\n  default_limit: 1\n", "utf-8");
+    writeFileSync(join(docsPath, "a.md"), "# Alpha\n\nseekx notes.\n", "utf-8");
+    writeFileSync(join(docsPath, "b.md"), "# Beta\n\nmore seekx notes.\n", "utf-8");
+    await runCli(["add", docsPath, "--name", "docs"]);
+
+    const result = await runCli(["search", "seekx", "--json", "--no-expand"]);
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout.trim()) as {
+      results: Array<{ file: string; score: number }>;
+    };
+    expect(parsed.results).toHaveLength(1);
+  });
+
 });

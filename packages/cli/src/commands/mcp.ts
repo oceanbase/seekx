@@ -39,12 +39,13 @@ export function registerMcp(program: Command): void {
         {
           query: z.string().describe("Search query"),
           collection: z.string().optional().describe("Restrict to a specific collection"),
-          limit: z.number().int().min(1).max(50).default(10).describe("Max results"),
+          limit: z.number().int().min(1).max(50).default(cfg.search.defaultLimit).describe("Max results"),
         },
         async ({ query, collection, limit }) => {
           const { results } = await hybridSearch(store, client, query, {
             ...(collection ? { collections: [collection] } : {}),
-            limit: limit ?? 10,
+            limit: limit ?? cfg.search.defaultLimit,
+            minScore: cfg.search.minScore,
             mode: "hybrid",
             useRerank: cfg.search.rerank,
             useExpand: true,

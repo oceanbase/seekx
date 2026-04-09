@@ -10,7 +10,7 @@ import type { SeekxClient } from "../src/client.ts";
 import { openDatabase } from "../src/db.ts";
 import type { Database } from "../src/db.ts";
 import { type SearchProgressEvent, hybridSearch } from "../src/search.ts";
-import { Store } from "../src/store.ts";
+import { type RawResult, Store } from "../src/store.ts";
 
 // ---------------------------------------------------------------------------
 // Minimal SeekxClient stub
@@ -194,5 +194,96 @@ describe("hybridSearch — client fail-open", () => {
     expect(vectorProgress.map((event) => event.completed)).toEqual([1, 2]);
 
     expect(events.at(-1)).toMatchObject({ phase: "done", warningCount: 0 });
+  });
+
+  test("filters low-scoring tail results with minScore on rerank raw scores", async () => {
+    const docC = store.upsertDocument({
+      collection: "col",
+      path: "/col/c.md",
+      title: "Gamma",
+      mtime: 1,
+      hash: "hc",
+    });
+    const cC = store.insertChunk({
+      doc_id: docC,
+      chunk_idx: 0,
+      content: "machine learning systems",
+      heading_path: null,
+      start_line: 0,
+      end_line: 3,
+      token_count: 3,
+    });
+    store.insertFTS(cC, "machine learning systems");
+
+    const client = {
+      embed: async () => null,
+      expand: async () => null,
+      rerank: async () => [
+        { index: 1, score: 1 },
+        { index: 0, score: 0.2 },
+      ],
+      healthCheck: async () => ({ embed: null, rerank: null, expand: null }),
+    } as unknown as SeekxClient;
+
+    const { results } = await hybridSearch(store, client, "machine", {
+      mode: "bm25",
+      useExpand: false,
+      useRerank: true,
+      minScore: 0.3,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.file).toBe("/col/c.md");
+    expect(results[0]?.score).toBe(1);
+  });
+
+  test("filters low-scoring vector candidates with minScore on vector raw scores", async () => {
+    const fakeVectorStore = {
+      searchFTS: () => [] as RawResult[],
+      searchVector: () =>
+        [
+          {
+            chunk_id: 1,
+            doc_id: 1,
+            score: 0.82,
+            content: "relevant vector match",
+            path: "/col/a.md",
+            title: "Alpha",
+            collection: "col",
+            start_line: 1,
+            end_line: 3,
+          },
+          {
+            chunk_id: 2,
+            doc_id: 2,
+            score: 0.12,
+            content: "weak vector match",
+            path: "/col/b.md",
+            title: "Beta",
+            collection: "col",
+            start_line: 1,
+            end_line: 3,
+          },
+        ] satisfies RawResult[],
+      encodeDocid: (docId: number) => String(docId).padStart(6, "0"),
+    } as unknown as Store;
+
+    const client = {
+      embed: async () => [[1, 0, 0]],
+      expand: async () => null,
+      rerank: async () => null,
+      healthCheck: async () => ({ embed: null, rerank: null, expand: null }),
+    } as unknown as SeekxClient;
+
+    const { results } = await hybridSearch(fakeVectorStore, client, "nomatch", {
+      mode: "vector",
+      useExpand: false,
+      useRerank: false,
+      minScore: 0.3,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.file).toBe("/col/a.md");
+    expect(results[0]?.score).toBe(1);
   });
 });

@@ -22,20 +22,20 @@ export function registerQuery(program: Command): void {
     .alias("q")
     .description("Search with automatic query expansion and reranking")
     .option("-c, --collection <name>", "Restrict search to a specific collection")
-    .option("-n, --limit <number>", "Maximum number of results", "10")
+    .option("-n, --limit <number>", "Maximum number of results")
     .option("--json", "Machine-readable output")
     .option("--md", "Markdown output")
     .action(
       async (
         question: string,
-        opts: { collection?: string; limit: string; json?: boolean; md?: boolean },
+        opts: { collection?: string; limit?: string; json?: boolean; md?: boolean },
         command: Command,
       ) => {
         const json = resolveJson(opts, command);
         const ctx = await openContext({ json });
         const { store, client, cfg } = ctx;
 
-        const limit = Number.parseInt(opts.limit, 10);
+        const limit = opts.limit ? Number.parseInt(opts.limit, 10) : cfg.search.defaultLimit;
         if (Number.isNaN(limit) || limit < 1) {
           die("--limit must be a positive integer.", EXIT.USER_ERROR, json);
         }
@@ -46,6 +46,7 @@ export function registerQuery(program: Command): void {
           searchResult = await hybridSearch(store, client, question, {
             ...(opts.collection ? { collections: [opts.collection] } : {}),
             limit,
+            minScore: cfg.search.minScore,
             mode: "hybrid",
             useRerank: cfg.search.rerank,
             useExpand: true,

@@ -16,18 +16,18 @@ export function registerVsearch(program: Command): void {
     .command("vsearch <query>")
     .description("Pure semantic search (requires embed API)")
     .option("-c, --collection <name>", "Restrict search to a specific collection")
-    .option("-n, --limit <number>", "Maximum number of results", "10")
+    .option("-n, --limit <number>", "Maximum number of results")
     .option("--json", "Machine-readable output")
     .option("--files", "Print matching file paths only")
     .action(
       async (
         query: string,
-        opts: { collection?: string; limit: string; json?: boolean; files?: boolean },
+        opts: { collection?: string; limit?: string; json?: boolean; files?: boolean },
         command: Command,
       ) => {
         const json = resolveJson(opts, command);
         const ctx = await openContext({ json });
-        const { store, client } = ctx;
+        const { store, client, cfg } = ctx;
 
         if (!client) {
           die(
@@ -37,7 +37,7 @@ export function registerVsearch(program: Command): void {
           );
         }
 
-        const limit = Number.parseInt(opts.limit, 10);
+        const limit = opts.limit ? Number.parseInt(opts.limit, 10) : cfg.search.defaultLimit;
         if (Number.isNaN(limit) || limit < 1) {
           die("--limit must be a positive integer.", EXIT.USER_ERROR, json);
         }
@@ -48,6 +48,7 @@ export function registerVsearch(program: Command): void {
           searchResult = await hybridSearch(store, client, query, {
             ...(opts.collection ? { collections: [opts.collection] } : {}),
             limit,
+            minScore: cfg.search.minScore,
             mode: "vector",
             useRerank: false,
             useExpand: false,
