@@ -122,9 +122,9 @@ Query
   │                                │
   └────────── all lists ───────────┘
                   │
-            RRF Fusion
+              RRF Fusion
                   │
-            [Rerank]
+              [Rerank]
                   │
                Final
 ```
