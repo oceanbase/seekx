@@ -25,7 +25,7 @@ export function createProgram(): Command {
     .description(
       "Context search engine for AI agents and humans.\n" +
         "Your files are the truth, seekx is just the index.\n" +
-        "No Model Downloads. Hybrid Search. Realtime Index.",
+        "No GPU. Hybrid Search. Realtime Index.",
     )
     .version("0.1.0")
     .option("--json", "Machine-readable JSON output (propagated to subcommands)")

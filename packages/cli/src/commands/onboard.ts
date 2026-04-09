@@ -7,16 +7,26 @@
  *   3. Select a provider preset or enter custom values.
  *   4. Live health check against configured APIs.
  *   5. Write config to ~/.seekx/config.yml.
+ *   6. Optionally spawn seekx watch as a detached background daemon.
  *
  * Provider presets fill in base_url and default model names so users only
  * need to paste their API key. Custom mode retains the original manual flow.
+ *
+ * Watch daemon spawn strategy:
+ *   Uses process.argv[0] (the running Bun binary) and process.argv[1] (the
+ *   seekx entry script) so the child inherits the exact same runtime and
+ *   installation path, regardless of whether seekx was invoked via a global
+ *   install, npx, or a direct path. stdio is set to "ignore" and the child
+ *   is unref()'d so onboard can exit without waiting for the watcher.
  */
 
+import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { SeekxClient, loadSqliteVec, openDatabase, writeConfigKey } from "@seekx/core";
 import type { Command } from "commander";
+import { watchPid } from "../lock.ts";
 
 const CONFIG_DIR = join(homedir(), ".seekx");
 const CONFIG_PATH = join(CONFIG_DIR, "config.yml");
@@ -97,7 +107,10 @@ export function registerOnboard(program: Command): void {
     .action(async () => {
       const { input, select, confirm } = await import("@inquirer/prompts");
 
-      console.log("\n\x1b[1mWelcome to seekx setup\x1b[0m\n");
+      console.log("\n\x1b[1mWelcome to seekx\x1b[0m");
+      console.log(
+        "  Local hybrid search for your files — full-text + semantic, no GPU required.\n",
+      );
 
       // ---- 1. Check Bun version ----
       const bunVersion = process.versions.bun ?? "unknown";
@@ -136,6 +149,12 @@ export function registerOnboard(program: Command): void {
       console.log();
 
       // ---- 3. Choose provider ----
+      console.log(
+        "  seekx uses an embedding API to understand the meaning of your files.",
+      );
+      console.log(
+        "  Pick a provider below — most offer a free tier to get started.\n",
+      );
       const providerKey = await select({
         message: "Choose a provider:",
         choices: Object.entries(PRESETS).map(([key, p]) => ({
@@ -254,15 +273,17 @@ export function registerOnboard(program: Command): void {
         b == null ? "\x1b[2m—\x1b[0m" : b ? "\x1b[32m✓\x1b[0m" : "\x1b[31m✗\x1b[0m";
 
       console.log(
-        `  embed   ${ok(health.embed?.ok)}  ${health.embed?.latencyMs ?? "—"}ms${health.embed?.dim ? `  dim=${health.embed.dim}` : ""}`,
+        `  Embeddings    ${ok(health.embed?.ok)}  ${health.embed?.latencyMs ?? "—"}ms${health.embed?.dim ? `  dim=${health.embed.dim}` : ""}`,
       );
       if (health.rerank != null)
-        console.log(`  rerank  ${ok(health.rerank.ok)}  ${health.rerank.latencyMs}ms`);
+        console.log(`  Reranker      ${ok(health.rerank.ok)}  ${health.rerank.latencyMs}ms`);
       if (health.expand != null)
-        console.log(`  expand  ${ok(health.expand.ok)}  ${health.expand.latencyMs}ms`);
+        console.log(`  Query expand  ${ok(health.expand.ok)}  ${health.expand.latencyMs}ms`);
 
       if (!health.embed?.ok) {
-        const cont = await confirm({ message: "Embed API check failed. Save config anyway?" });
+        const cont = await confirm({
+          message: "Embedding API check failed. Save config anyway?",
+        });
         if (!cont) {
           console.log("Setup cancelled.");
           process.exit(0);
@@ -290,9 +311,59 @@ export function registerOnboard(program: Command): void {
       }
 
       console.log(`\n\x1b[32m✓\x1b[0m Config written to ${CONFIG_PATH}`);
+
+      // ---- 7. Start watch daemon ----
+      console.log();
+      console.log(
+        "  Real-time indexing: a background watcher monitors your collections and",
+      );
+      console.log(
+        "  re-indexes any file the moment it changes — so search results are always",
+      );
+      console.log("  fresh without you having to run any command.");
+
+      const startDaemon = await confirm({
+        message: "Enable real-time indexing now? (runs silently in background)",
+        default: true,
+      });
+
+      if (startDaemon) {
+        const running = watchPid(DB_PATH);
+        if (running !== null) {
+          console.log(`\n  Real-time indexer is already running (PID ${running}).`);
+        } else {
+          try {
+            // SpawnOptions avoids the 'never' overload intersection; cast confirms
+            // the result is ChildProcess. argv[0]/[1] are asserted non-null since
+            // this code path only runs inside a real CLI invocation.
+            const spawnOpts: SpawnOptions = { detached: true, stdio: "ignore" };
+            // biome-ignore lint/style/noNonNullAssertion: present in any real CLI invocation
+            const child = spawn(process.argv[0]!, [process.argv[1] ?? "", "watch"], spawnOpts) as unknown as ChildProcess;
+            child.unref();
+            console.log(`\n\x1b[32m✓\x1b[0m Real-time indexer started (PID ${child.pid ?? "unknown"}).`);
+            console.log(
+              "  File changes are detected and indexed automatically — search results stay fresh.",
+            );
+            console.log(
+              `  To stop: kill ${child.pid ?? "<PID>"}   or   pkill -f 'seekx watch'`,
+            );
+          } catch (err) {
+            console.log(
+              `\n\x1b[33m⚠\x1b[0m Failed to start real-time indexer: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            console.log("  Start it manually later with: seekx watch");
+          }
+        }
+      }
+
       console.log("\nNext steps:");
-      console.log("  seekx add <path>   — add a directory to index");
+      if (startDaemon) {
+        console.log("  seekx add <path>   — add a directory; the indexer picks it up automatically");
+      } else {
+        console.log("  seekx add <path>   — add a directory to index");
+        console.log("  seekx watch        — start real-time watcher");
+      }
       console.log("  seekx search <q>   — search your knowledge base");
-      console.log("  seekx watch        — start real-time watcher\n");
+      console.log();
     });
 }
