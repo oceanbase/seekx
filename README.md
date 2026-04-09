@@ -227,17 +227,6 @@ bun run lint                     # biome check
 bun run format                   # biome format --write
 ```
 
-### Publishing to npm (maintainers)
-
-To release a new version, bump versions in `packages/core/package.json` and `packages/cli/package.json` as needed, then publish `seekx-core` first, then `seekx` (Bun/npm rewrite `workspace:*` to the published core version in the packed manifest):
-
-```bash
-cd packages/core && npm publish
-cd ../cli && npm publish
-```
-
-Log in with `npm login` (or your CI token) beforehand. Verify releases on the registry: [`seekx`](https://www.npmjs.com/package/seekx), [`seekx-core`](https://www.npmjs.com/package/seekx-core).
-
 ## Roadmap
 
 - [ ] MCP server — expose your knowledge base to AI agents (Claude Desktop, Cursor, etc.)
