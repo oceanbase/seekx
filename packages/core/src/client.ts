@@ -1,7 +1,7 @@
 /**
- * client.ts — OpenAI-compatible REST client for embed / rerank / expand.
+ * client.ts — OpenAI-compatible REST client for embed / rerank / expand / hyde.
  *
- * All three methods return null instead of throwing on network or API errors,
+ * All four methods return null instead of throwing on network or API errors,
  * allowing callers (indexer, search pipeline) to degrade gracefully.
  *
  * Rerank API format differs between providers:
@@ -10,11 +10,31 @@
  *
  * Embeddings are L2-normalized before being returned so callers can use L2
  * distance directly (equivalent to cosine similarity on unit vectors).
+ *
+ * LLM response caching:
+ *   An optional LLMCache can be injected at construction. When present:
+ *   - expand() caches by (model, query); TTL 1 hour.
+ *   - rerank() caches by (model, query, djb2 hash of documents); TTL 1 hour.
+ *   - hyde() caches by (model, query); TTL 1 hour.
+ *   The cache key is a plain string; the value is JSON-serialised response.
  */
 
 import type { ServiceEndpoint } from "./config.ts";
 
 const REQUEST_TIMEOUT_MS = 30_000;
+
+// ---------------------------------------------------------------------------
+// LLM response cache interface
+// ---------------------------------------------------------------------------
+
+/**
+ * Pluggable cache for LLM responses (expand, rerank, hyde).
+ * The Store implementation uses an SQLite table; tests can inject a Map-backed stub.
+ */
+export interface LLMCache {
+  get(key: string): string | null;
+  set(key: string, value: string, ttlSec?: number): void;
+}
 
 export interface RerankResult {
   index: number;
@@ -30,6 +50,7 @@ export class SeekxClient {
     private readonly embed_cfg: ServiceEndpoint,
     private readonly rerank_cfg: ServiceEndpoint | null,
     private readonly expand_cfg: ServiceEndpoint | null,
+    private readonly cache?: LLMCache,
   ) {}
 
   /**
@@ -72,10 +93,21 @@ export class SeekxClient {
   /**
    * Rerank documents against a query. Returns results sorted by score desc,
    * or null on failure. Each result contains the original index + score.
+   * Responses are cached by (model, query, djb2 hash of documents).
    */
   async rerank(query: string, documents: string[]): Promise<RerankResult[] | null> {
     if (!this.rerank_cfg) return null;
     if (documents.length === 0) return [];
+
+    const cacheKey = `rerank:${this.rerank_cfg.model}:${query}:${djb2Hash(documents)}`;
+    const cached = this.cache?.get(cacheKey);
+    if (cached) {
+      try {
+        return JSON.parse(cached) as RerankResult[];
+      } catch {
+        // Corrupted cache entry — fall through to API call.
+      }
+    }
 
     const isCohere = this.rerank_cfg.baseUrl.includes("cohere.com");
     const docs = isCohere ? documents.map((text) => ({ text })) : documents;
@@ -130,7 +162,9 @@ export class SeekxClient {
         return null;
       }
 
-      return mapped.sort((a, b) => b.score - a.score);
+      const sorted = mapped.sort((a, b) => b.score - a.score);
+      this.cache?.set(cacheKey, JSON.stringify(sorted));
+      return sorted;
     } catch (e) {
       console.error(`[seekx] rerank request failed: ${e}`);
       return null;
@@ -140,9 +174,20 @@ export class SeekxClient {
   /**
    * Expand a query into 2–3 alternative formulations via chat completions.
    * Returns an array of query strings (including the original), or null on failure.
+   * Responses are cached by (model, query).
    */
   async expand(query: string): Promise<string[] | null> {
     if (!this.expand_cfg) return null;
+
+    const cacheKey = `expand:${this.expand_cfg.model}:${query}`;
+    const cached = this.cache?.get(cacheKey);
+    if (cached) {
+      try {
+        return JSON.parse(cached) as string[];
+      } catch {
+        // Corrupted cache entry — fall through to API call.
+      }
+    }
 
     const systemPrompt =
       "You are a search query expansion assistant. " +
@@ -202,9 +247,66 @@ export class SeekxClient {
         return null;
       }
       // Always include the original query.
-      return [query, ...alternatives.filter((q) => q !== query)];
+      const result = [query, ...alternatives.filter((q) => q !== query)];
+      this.cache?.set(cacheKey, JSON.stringify(result));
+      return result;
     } catch (e) {
       console.error(`[seekx] expand request failed: ${e}`);
+      return null;
+    }
+  }
+
+  /**
+   * Generate a Hypothetical Document Embedding (HyDE) passage for the query.
+   * Returns a short synthetic passage that resembles what a relevant document
+   * would say, enabling the embedding model to retrieve via document-space
+   * similarity rather than query-space.
+   * Reuses the expand endpoint. Responses are cached by (model, query).
+   */
+  async hyde(query: string): Promise<string | null> {
+    if (!this.expand_cfg) return null;
+
+    const cacheKey = `hyde:${this.expand_cfg.model}:${query}`;
+    const cached = this.cache?.get(cacheKey);
+    if (cached) return cached;
+
+    const systemPrompt =
+      "You are a document search expert. Given a search query, write a short passage " +
+      "(2–4 sentences) that would be an ideal answer or highly relevant document fragment. " +
+      "Write as factual document content, not as an assistant. Be specific and informative.";
+
+    try {
+      const res = await fetchWithTimeout(
+        `${this.expand_cfg.baseUrl}/chat/completions`,
+        {
+          method: "POST",
+          headers: jsonHeaders(this.expand_cfg.apiKey),
+          body: JSON.stringify({
+            model: this.expand_cfg.model,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: query },
+            ],
+            temperature: 0.7,
+            max_tokens: 300,
+          }),
+        },
+        REQUEST_TIMEOUT_MS,
+      );
+
+      if (!res.ok) {
+        console.error(`[seekx] hyde API error: ${res.status} ${await res.text()}`);
+        return null;
+      }
+
+      const data = (await res.json()) as {
+        choices: Array<{ message: { content: string } }>;
+      };
+      const hydeDoc = data.choices[0]?.message.content?.trim() ?? null;
+      if (hydeDoc) this.cache?.set(cacheKey, hydeDoc);
+      return hydeDoc;
+    } catch (e) {
+      console.error(`[seekx] hyde request failed: ${e}`);
       return null;
     }
   }
@@ -263,6 +365,21 @@ function jsonHeaders(apiKey: string): Record<string, string> {
     Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
   };
+}
+
+/**
+ * DJB2-based hash of an array of strings. Used to build rerank cache keys
+ * without importing the crypto module. Fast and sufficient for cache
+ * discrimination — not intended for security purposes.
+ */
+function djb2Hash(strs: string[]): string {
+  let h = 5381;
+  for (const s of strs) {
+    for (let i = 0; i < s.length; i++) {
+      h = (Math.imul(h, 33) ^ s.charCodeAt(i)) >>> 0;
+    }
+  }
+  return h.toString(16).padStart(8, "0");
 }
 
 /**

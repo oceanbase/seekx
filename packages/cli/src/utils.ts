@@ -69,7 +69,15 @@ export async function openContext(opts: { json?: boolean | undefined } = {}): Pr
   const vecLoaded = await loadSqliteVec(db);
   const store = new Store(db, vecLoaded);
 
-  const client = isEmbedConfigured(cfg) ? new SeekxClient(cfg.embed, cfg.rerank, cfg.expand) : null;
+  // Wire the store's LLM cache into the client so expand/rerank/hyde responses
+  // are persisted across CLI invocations (TTL 1 hour, evicted on store open).
+  const llmCache = {
+    get: (key: string) => store.getCachedLLM(key),
+    set: (key: string, value: string, ttlSec?: number) => store.setCachedLLM(key, value, ttlSec),
+  };
+  const client = isEmbedConfigured(cfg)
+    ? new SeekxClient(cfg.embed, cfg.rerank, cfg.expand, llmCache)
+    : null;
 
   return { cfg, db, store, client, vecLoaded };
 }

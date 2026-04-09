@@ -1,13 +1,14 @@
 /**
  * store.ts — SQLite schema, migrations, and CRUD for seekx.
  *
- * Six tables:
+ * Seven tables:
  *   collections  — indexed directory registrations
  *   documents    — one row per indexed file (mtime + hash for change detection)
  *   chunks       — chunked text segments within a document
  *   fts          — FTS5 virtual table; rowid == chunk_id for O(1) delete
  *   vec_chunks   — sqlite-vec virtual table; created lazily on first embed
  *   meta         — key/value store for schema version, embed model, dim, etc.
+ *   llm_cache    — TTL-based cache for LLM responses (expand, rerank, hyde)
  *
  * FTS5 invariant: INSERT uses rowid = chunk_id so DELETE by rowid is O(1).
  * FTS5 does NOT cascade from chunks; callers must delete FTS rows before chunks.
@@ -16,6 +17,10 @@
  * L2 distance is equivalent to cosine distance for unit vectors.
  * vec_chunks does NOT cascade from chunks (sqlite-vec virtual table has no FK
  * support); callers must delete vec_chunks rows in the same step as FTS rows.
+ *
+ * llm_cache invariant: cache_key is opaque (model + inputs hash); entries are
+ * valid until (created_at + ttl_sec). Callers must call evictExpiredLLMCache()
+ * periodically to reclaim space; seekx does this on store open.
  */
 
 import type { Database } from "./db.ts";
@@ -168,15 +173,28 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 `;
 
+// Schema v2: LLM response cache (expand, rerank, hyde).
+const SCHEMA_V2_ADD_LLM_CACHE = `
+CREATE TABLE IF NOT EXISTS llm_cache (
+  cache_key  TEXT    PRIMARY KEY,
+  response   TEXT    NOT NULL,
+  created_at INTEGER NOT NULL,
+  ttl_sec    INTEGER NOT NULL DEFAULT 3600
+);
+`;
+
 type Migration = (db: Database) => void;
 
 const MIGRATIONS: Record<number, Migration> = {
   1: (db) => {
     db.exec(SCHEMA_V1);
   },
+  2: (db) => {
+    db.exec(SCHEMA_V2_ADD_LLM_CACHE);
+  },
 };
 
-const CURRENT_SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 2;
 
 function runMigrations(db: Database): void {
   // meta table may not exist yet on first run; create it first.
@@ -218,6 +236,9 @@ export class Store {
     // Read previously stored embed dim if any.
     const dim = this.getMeta("embed_dim");
     if (dim) this.vecDim = Number.parseInt(dim, 10);
+
+    // Evict stale LLM cache entries on open to avoid unbounded growth.
+    this.evictExpiredLLMCache();
   }
 
   // -------------------------------------------------------------------------
@@ -477,29 +498,14 @@ export class Store {
   searchVector(normalizedQuery: number[], limit: number, collections?: string[]): RawResult[] {
     if (!this.vecLoaded || !this.vecDim) return [];
 
-    // Step 1: KNN search directly on vec_chunks.
     // sqlite-vec MATCH does not support JOINs in the same WHERE clause, so we
-    // run it as a standalone query and join in application code (Step 2).
-    // We fetch limit*3 candidates to allow collection filtering to trim down.
-    const knnFetch = Math.max(limit * 3, 30);
-    type KnnRow = { chunk_id: number; distance: number };
-    let knnRows: KnnRow[];
-    try {
-      knnRows = this.db
-        .prepare(
-          `SELECT chunk_id, distance FROM vec_chunks
-           WHERE embedding MATCH ? ORDER BY distance LIMIT ?`,
-        )
-        .all(JSON.stringify(normalizedQuery), knnFetch) as KnnRow[];
-    } catch {
-      return [];
-    }
-
-    if (knnRows.length === 0) return [];
-
-    // Step 2: Resolve chunk_id → chunk + document, applying collection filter.
-    // cosine_sim = 1 - L2_distance² / 2  (exact for unit vectors)
-    const results: RawResult[] = [];
+    // run KNN as a standalone query and join in application code.
+    //
+    // Adaptive fetch: when a collection filter is active, the initial fetch
+    // may yield fewer than `limit` results after filtering. We double the
+    // fetch size and retry (up to maxFetch) until we have enough results or
+    // the index is exhausted.
+    const hasCollFilter = Boolean(collections && collections.length > 0);
     const chunkStmt = this.db.prepare(
       `SELECT c.id AS chunk_id, c.doc_id, c.content, c.start_line, c.end_line,
               d.path, d.title, d.collection
@@ -507,16 +513,121 @@ export class Store {
        WHERE c.id = ?`,
     );
 
-    for (const knn of knnRows) {
-      const row = chunkStmt.get(knn.chunk_id) as Omit<RawResult, "score"> | null;
-      if (!row) continue;
-      if (collections && collections.length > 0 && !collections.includes(row.collection)) continue;
-      const cosineSim = Math.max(0, 1 - (knn.distance * knn.distance) / 2);
-      results.push({ ...row, score: cosineSim });
-      if (results.length >= limit) break;
-    }
+    let knnFetch = Math.max(limit * 3, 30);
+    // Safety cap to avoid runaway fetches on large indexes.
+    const maxFetch = Math.max(limit * 20, 200);
 
-    return results;
+    for (;;) {
+      type KnnRow = { chunk_id: number; distance: number };
+      let knnRows: KnnRow[];
+      try {
+        knnRows = this.db
+          .prepare(
+            `SELECT chunk_id, distance FROM vec_chunks
+             WHERE embedding MATCH ? ORDER BY distance LIMIT ?`,
+          )
+          .all(JSON.stringify(normalizedQuery), knnFetch) as KnnRow[];
+      } catch {
+        return [];
+      }
+
+      if (knnRows.length === 0) return [];
+
+      // Step 2: Resolve chunk_id → chunk + document, applying collection filter.
+      // cosine_sim = 1 - L2_distance² / 2  (exact for unit vectors)
+      const results: RawResult[] = [];
+      for (const knn of knnRows) {
+        const row = chunkStmt.get(knn.chunk_id) as Omit<RawResult, "score"> | null;
+        if (!row) continue;
+        if (hasCollFilter && !collections!.includes(row.collection)) continue;
+        const cosineSim = Math.max(0, 1 - (knn.distance * knn.distance) / 2);
+        results.push({ ...row, score: cosineSim });
+        if (results.length >= limit) return results;
+      }
+
+      // Return what we have if: no collection filter (no reason to retry),
+      // the KNN index is exhausted, or we've hit the safety cap.
+      if (!hasCollFilter || knnRows.length < knnFetch || knnFetch >= maxFetch) {
+        return results;
+      }
+      knnFetch = Math.min(knnFetch * 2, maxFetch);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // LLM response cache
+  // -------------------------------------------------------------------------
+
+  /**
+   * Retrieve a cached LLM response. Returns null if the key is absent or the
+   * entry has expired (created_at + ttl_sec ≤ now).
+   */
+  getCachedLLM(key: string): string | null {
+    const now = Math.floor(Date.now() / 1000);
+    const row = this.db
+      .prepare(
+        `SELECT response FROM llm_cache
+         WHERE cache_key = ? AND (created_at + ttl_sec) > ?`,
+      )
+      .get(key, now) as { response: string } | null;
+    return row?.response ?? null;
+  }
+
+  /** Store a LLM response. Overwrites any existing entry for the same key. */
+  setCachedLLM(key: string, response: string, ttlSec = 3600): void {
+    const now = Math.floor(Date.now() / 1000);
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO llm_cache(cache_key, response, created_at, ttl_sec)
+         VALUES(?, ?, ?, ?)`,
+      )
+      .run(key, response, now, ttlSec);
+  }
+
+  /**
+   * Delete expired cache entries. Returns the number of rows deleted.
+   * Should be called periodically (e.g. on store open) to reclaim space.
+   */
+  evictExpiredLLMCache(): number {
+    const now = Math.floor(Date.now() / 1000);
+    const result = this.db
+      .prepare(`DELETE FROM llm_cache WHERE (created_at + ttl_sec) <= ?`)
+      .run(now);
+    return result.changes;
+  }
+
+  // -------------------------------------------------------------------------
+  // FTS5 snippet
+  // -------------------------------------------------------------------------
+
+  /**
+   * Return an FTS5 snippet for a specific chunk, using the built-in
+   * `snippet()` function which finds the densest multi-term match window.
+   * Match terms are wrapped in `**` markers.
+   *
+   * Returns null when:
+   *   - ftsQuery is empty
+   *   - the chunk is not in the FTS index (e.g. a pure vector-only result)
+   *   - the chunk does not match the query at all
+   *
+   * Callers should fall back to extractSnippet() when null is returned.
+   *
+   * @param chunkId  The chunk's rowid (== chunk.id, which is the FTS rowid).
+   * @param ftsQuery A pre-built FTS5 MATCH expression (from buildFTSQuery).
+   */
+  getSnippetFTS(chunkId: number, ftsQuery: string): string | null {
+    if (!ftsQuery) return null;
+    try {
+      const row = this.db
+        .prepare(
+          `SELECT snippet(fts, 0, '**', '**', '…', 20) AS snip
+           FROM fts WHERE rowid = ? AND fts MATCH ?`,
+        )
+        .get(chunkId, ftsQuery) as { snip: string } | null;
+      return row?.snip ?? null;
+    } catch {
+      return null;
+    }
   }
 
   // -------------------------------------------------------------------------

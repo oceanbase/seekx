@@ -10,10 +10,11 @@ export type {
   CollectionStats,
   ChunkRow,
   AddCollectionInput,
+  IndexStatus,
 } from "./store.ts";
 
 export { SeekxClient, l2normalize } from "./client.ts";
-export type { RerankResult } from "./client.ts";
+export type { RerankResult, LLMCache } from "./client.ts";
 
 export {
   loadConfig,
