@@ -6,9 +6,49 @@
  *   --json   — JSON (one object per command)
  *   --files  — newline-separated file paths only (for scripting)
  *   --md     — Markdown (for piping to note-taking tools)
+ *
+ * Default format (one block per result):
+ *
+ *   <colored-file>:start_line
+ *   Title: <title>          ← only when title is non-null
+ *   Score: 39%
+ *
+ *   @@ -start,count @@
+ *   <snippet>
+ *
+ * Each file gets a deterministic ANSI 256-color derived from its path so
+ * multiple chunks from the same file are visually grouped at a glance.
  */
 
 import type { SearchResult } from "@seekx/core";
+
+// ---------------------------------------------------------------------------
+// Per-file stable color
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive a deterministic ANSI 256-color escape sequence from a file path.
+ * Uses a small curated palette of distinct, readable colors so that each
+ * unique path gets a consistent color across result sets.
+ */
+function fileAnsiColor(file: string): string {
+  // djb2 hash over the path characters.
+  let h = 5381;
+  for (let i = 0; i < file.length; i++) {
+    h = (((h << 5) + h) ^ file.charCodeAt(i)) >>> 0;
+  }
+  // Curated ANSI-256 palette: bright, distinct hues that work on dark and
+  // light terminals.  Excludes very dark / very light entries.
+  const PALETTE = [
+    196, 202, 208, 214, 220, 118, 82, 46, 48, 51, 45, 39, 33, 27, 57, 93,
+    129, 165, 201, 199, 160, 172, 148, 85, 123, 141,
+  ];
+  const code = PALETTE[h % PALETTE.length];
+  return `\x1b[38;5;${code}m`;
+}
+
+const RESET = "\x1b[0m";
+const DIM = "\x1b[2m";
 
 // ---------------------------------------------------------------------------
 // Search results
@@ -49,7 +89,9 @@ export function formatSearchResults(
     for (const r of results) {
       const titleStr = r.title ? ` — ${r.title}` : "";
       console.log(`## [${r.file}${titleStr}](${r.file})\n`);
-      console.log(`> Score: ${r.score.toFixed(3)} | Lines ${r.start_line}–${r.end_line}\n`);
+      console.log(
+        `> Score: ${Math.round(r.score * 100)}% | Lines ${r.start_line}–${r.end_line}\n`,
+      );
       console.log(r.snippet);
       console.log();
     }
@@ -58,10 +100,25 @@ export function formatSearchResults(
 
   // Default: human-readable.
   for (const r of results) {
-    const scoreStr = `\x1b[33m${r.score.toFixed(3)}\x1b[0m`;
-    const titleStr = r.title ? ` \x1b[2m(${r.title})\x1b[0m` : "";
-    console.log(`\x1b[36m${r.file}\x1b[0m:${r.start_line}${titleStr} [${scoreStr}]`);
-    console.log(`  ${r.snippet}`);
+    const color = fileAnsiColor(r.file);
+    const lineCount = r.end_line - r.start_line + 1;
+
+    // Header line: colored filename + start line number.
+    console.log(`${color}${r.file}${RESET}:${r.start_line}`);
+
+    // Title (optional).
+    if (r.title) {
+      console.log(`Title: ${r.title}`);
+    }
+
+    // Score as percentage.
+    console.log(`Score: ${Math.round(r.score * 100)}%`);
+
+    // Diff-style line range header.
+    console.log(`\n${DIM}@@ -${r.start_line},${lineCount} @@${RESET}`);
+
+    // Snippet.
+    console.log(r.snippet);
     console.log();
   }
 }

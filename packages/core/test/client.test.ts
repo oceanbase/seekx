@@ -149,6 +149,46 @@ describe("SeekxClient.expand — JSON parsing", () => {
     globalThis.fetch = prev;
     expect(result).toBeNull();
   });
+
+  test("tolerates null items mixed into the alternatives array", async () => {
+    // Some models return ["q1", null, "q2"]; we should keep the valid strings.
+    const prev = globalThis.fetch;
+    globalThis.fetch = mockExpandFetch('["good query", null, "another query"]');
+    const client = new SeekxClient(embedCfg, null, expandCfg);
+    const result = await client.expand("original");
+    globalThis.fetch = prev;
+    expect(result).toEqual(["original", "good query", "another query"]);
+  });
+
+  test("tolerates empty string items in the alternatives array", async () => {
+    const prev = globalThis.fetch;
+    globalThis.fetch = mockExpandFetch('["q1", "", "q2"]');
+    const client = new SeekxClient(embedCfg, null, expandCfg);
+    const result = await client.expand("orig");
+    globalThis.fetch = prev;
+    expect(result).toEqual(["orig", "q1", "q2"]);
+  });
+
+  test("parses less common wrapper keys (expanded_queries, suggestions)", async () => {
+    for (const key of ["expanded_queries", "suggestions"]) {
+      const prev = globalThis.fetch;
+      globalThis.fetch = mockExpandFetch(JSON.stringify({ [key]: ["alt1", "alt2"] }));
+      const client = new SeekxClient(embedCfg, null, expandCfg);
+      const result = await client.expand("base");
+      globalThis.fetch = prev;
+      expect(result).toEqual(["base", "alt1", "alt2"]);
+    }
+  });
+
+  test("extracts JSON array embedded in prose via regex fallback", async () => {
+    // Some models prepend a sentence before the JSON.
+    const prev = globalThis.fetch;
+    globalThis.fetch = mockExpandFetch('Here are the queries: ["rewrite one", "rewrite two"]');
+    const client = new SeekxClient(embedCfg, null, expandCfg);
+    const result = await client.expand("query");
+    globalThis.fetch = prev;
+    expect(result).toEqual(["query", "rewrite one", "rewrite two"]);
+  });
 });
 
 describe("SeekxClient.healthCheck — unreachable endpoint", () => {

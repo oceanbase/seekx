@@ -184,9 +184,19 @@ export class SeekxClient {
         .replace(/^```(?:json)?\s*/i, "")
         .replace(/\s*```$/, "")
         .trim();
-      const alternatives = parseExpandAlternatives(JSON.parse(stripped));
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(stripped);
+      } catch {
+        // JSON.parse failed; pass undefined so parseExpandAlternatives can
+        // attempt regex extraction from the raw text.
+        parsed = undefined;
+      }
+      const alternatives = parseExpandAlternatives(parsed, stripped);
       if (!alternatives) {
-        console.error("[seekx] expand API error: expected JSON array of strings or wrapped alternatives object.");
+        console.error(
+          `[seekx] expand API error: could not extract string alternatives. raw response: ${JSON.stringify(raw)}`,
+        );
         return null;
       }
       // Always include the original query.
@@ -253,24 +263,72 @@ function jsonHeaders(apiKey: string): Record<string, string> {
   };
 }
 
-function parseExpandAlternatives(value: unknown): string[] | null {
-  if (Array.isArray(value)) return sanitizeExpandAlternatives(value);
-  if (!value || typeof value !== "object") return null;
+/**
+ * Try every known shape the LLM might use to return expansion alternatives.
+ * Falls back to regex extraction from the raw stripped text so that prose
+ * preambles (e.g. "Here are your queries: [...]") are still handled.
+ */
+function parseExpandAlternatives(value: unknown, raw: string): string[] | null {
+  // Direct array.
+  if (Array.isArray(value)) {
+    const result = sanitizeExpandAlternatives(value);
+    if (result) return result;
+  }
 
-  for (const key of ["alternatives", "queries", "rewrites"]) {
-    const nested = (value as Record<string, unknown>)[key];
-    if (Array.isArray(nested)) return sanitizeExpandAlternatives(nested);
+  // Object wrapper — try known keys then any array-valued property.
+  if (value && typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    for (const key of [
+      "alternatives",
+      "queries",
+      "rewrites",
+      "expanded_queries",
+      "suggestions",
+      "results",
+      "items",
+    ]) {
+      const nested = obj[key];
+      if (Array.isArray(nested)) {
+        const result = sanitizeExpandAlternatives(nested);
+        if (result) return result;
+      }
+    }
+    // Generic fallback: try every array-valued property in declaration order.
+    for (const v of Object.values(obj)) {
+      if (Array.isArray(v)) {
+        const result = sanitizeExpandAlternatives(v);
+        if (result) return result;
+      }
+    }
+  }
+
+  // Last resort: regex-extract the first JSON array literal from raw text.
+  // Handles cases where the model wraps output in prose or the outer JSON.parse
+  // failed entirely.
+  const match = raw.match(/\[[\s\S]*?\]/);
+  if (match) {
+    try {
+      const extracted: unknown = JSON.parse(match[0]);
+      if (Array.isArray(extracted)) return sanitizeExpandAlternatives(extracted);
+    } catch {
+      // not parseable; fall through to null
+    }
   }
 
   return null;
 }
 
+/**
+ * Filter an array down to non-empty strings.  We are intentionally lenient:
+ * if the model mixes in a null or empty string we skip that item rather than
+ * rejecting the entire batch.  Return null only if no valid string survives.
+ */
 function sanitizeExpandAlternatives(values: unknown[]): string[] | null {
   const out = values
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
-  return out.length === values.length ? out : null;
+  return out.length > 0 ? out : null;
 }
 
 async function fetchWithTimeout(
