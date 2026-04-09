@@ -77,6 +77,80 @@ describe("SeekxClient.embed — unreachable endpoint", () => {
   });
 });
 
+describe("SeekxClient.expand — JSON parsing", () => {
+  const embedCfg = { baseUrl: "http://127.0.0.1:1", apiKey: "", model: "x" };
+  const expandCfg = { baseUrl: "https://example.com", apiKey: "k", model: "gpt-4o-mini" };
+
+  function mockExpandFetch(content: string): typeof fetch {
+    return createMockFetch({
+      choices: [{ message: { content } }],
+    });
+  }
+
+  test("parses bare JSON array", async () => {
+    const prev = globalThis.fetch;
+    globalThis.fetch = mockExpandFetch('["alt query one", "alt query two"]');
+    const client = new SeekxClient(embedCfg, null, expandCfg);
+    const result = await client.expand("original");
+    globalThis.fetch = prev;
+    expect(result).toEqual(["original", "alt query one", "alt query two"]);
+  });
+
+  test("parses JSON array wrapped in ```json...``` fence", async () => {
+    const prev = globalThis.fetch;
+    globalThis.fetch = mockExpandFetch('```json\n["rewrite one", "rewrite two"]\n```');
+    const client = new SeekxClient(embedCfg, null, expandCfg);
+    const result = await client.expand("query");
+    globalThis.fetch = prev;
+    expect(result).toEqual(["query", "rewrite one", "rewrite two"]);
+  });
+
+  test("parses JSON array wrapped in plain ``` fence", async () => {
+    const prev = globalThis.fetch;
+    globalThis.fetch = mockExpandFetch('```\n["variant a", "variant b"]\n```');
+    const client = new SeekxClient(embedCfg, null, expandCfg);
+    const result = await client.expand("q");
+    globalThis.fetch = prev;
+    expect(result).toEqual(["q", "variant a", "variant b"]);
+  });
+
+  test("deduplicates original query from alternatives", async () => {
+    const prev = globalThis.fetch;
+    globalThis.fetch = mockExpandFetch('["original", "other"]');
+    const client = new SeekxClient(embedCfg, null, expandCfg);
+    const result = await client.expand("original");
+    globalThis.fetch = prev;
+    expect(result).toEqual(["original", "other"]);
+  });
+
+  test("parses alternatives wrapped in an object", async () => {
+    const prev = globalThis.fetch;
+    globalThis.fetch = mockExpandFetch('{"alternatives":["同义改写", "相关表述"]}');
+    const client = new SeekxClient(embedCfg, null, expandCfg);
+    const result = await client.expand("挺好");
+    globalThis.fetch = prev;
+    expect(result).toEqual(["挺好", "同义改写", "相关表述"]);
+  });
+
+  test("returns null on invalid JSON (fail-open)", async () => {
+    const prev = globalThis.fetch;
+    globalThis.fetch = mockExpandFetch("not json at all");
+    const client = new SeekxClient(embedCfg, null, expandCfg);
+    const result = await client.expand("query");
+    globalThis.fetch = prev;
+    expect(result).toBeNull();
+  });
+
+  test("returns null when parsed JSON is not an alternatives array", async () => {
+    const prev = globalThis.fetch;
+    globalThis.fetch = mockExpandFetch('{"alternatives":"not-an-array"}');
+    const client = new SeekxClient(embedCfg, null, expandCfg);
+    const result = await client.expand("query");
+    globalThis.fetch = prev;
+    expect(result).toBeNull();
+  });
+});
+
 describe("SeekxClient.healthCheck — unreachable endpoint", () => {
   test("returns ok: false for all services", async () => {
     const client = new SeekxClient(

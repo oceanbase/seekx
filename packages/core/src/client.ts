@@ -178,8 +178,17 @@ export class SeekxClient {
       const data = (await res.json()) as {
         choices: Array<{ message: { content: string } }>;
       };
-      const content = data.choices[0]?.message.content ?? "[]";
-      const alternatives = JSON.parse(content) as string[];
+      const raw = (data.choices[0]?.message.content ?? "[]").trim();
+      // Strip optional markdown code fence that some models add (e.g. ```json…```).
+      const stripped = raw
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/, "")
+        .trim();
+      const alternatives = parseExpandAlternatives(JSON.parse(stripped));
+      if (!alternatives) {
+        console.error("[seekx] expand API error: expected JSON array of strings or wrapped alternatives object.");
+        return null;
+      }
       // Always include the original query.
       return [query, ...alternatives.filter((q) => q !== query)];
     } catch (e) {
@@ -242,6 +251,26 @@ function jsonHeaders(apiKey: string): Record<string, string> {
     Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
   };
+}
+
+function parseExpandAlternatives(value: unknown): string[] | null {
+  if (Array.isArray(value)) return sanitizeExpandAlternatives(value);
+  if (!value || typeof value !== "object") return null;
+
+  for (const key of ["alternatives", "queries", "rewrites"]) {
+    const nested = (value as Record<string, unknown>)[key];
+    if (Array.isArray(nested)) return sanitizeExpandAlternatives(nested);
+  }
+
+  return null;
+}
+
+function sanitizeExpandAlternatives(values: unknown[]): string[] | null {
+  const out = values
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  return out.length === values.length ? out : null;
 }
 
 async function fetchWithTimeout(

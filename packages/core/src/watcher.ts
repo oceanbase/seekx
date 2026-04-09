@@ -32,6 +32,14 @@ export interface CollectionWatch {
 export class Watcher extends EventEmitter {
   private watcher: FSWatcher | null = null;
   private debounceMap = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Paths whose indexFile() call is currently in flight (awaiting embed, etc.). */
+  private readonly inProgressSet = new Set<string>();
+  /**
+   * Paths that received a filesystem change while their indexFile() was in
+   * flight. After the in-flight call finishes we immediately re-index them so
+   * no write is silently lost.
+   */
+  private readonly pendingSet = new Set<string>();
   private readonly debounceMs: number;
   private readonly ignore: string[];
   private readonly collections: CollectionWatch[];
@@ -72,6 +80,9 @@ export class Watcher extends EventEmitter {
   async stop(): Promise<void> {
     for (const timer of this.debounceMap.values()) clearTimeout(timer);
     this.debounceMap.clear();
+    this.pendingSet.clear();
+    // inProgressSet: in-flight indexFile() calls will still complete; we only
+    // stop accepting new work by clearing pending and closing the watcher.
     await this.watcher?.close();
     this.watcher = null;
   }
@@ -85,11 +96,34 @@ export class Watcher extends EventEmitter {
       this.debounceMap.delete(absPath);
       const col = this.collectionForPath(absPath);
       if (!col) return;
-      indexFile(this.store, this.client, col.collection, absPath)
-        .then((result) => this.emit("event", { type: "indexed", result }))
-        .catch((err) => this.emit("event", { type: "error", path: absPath, error: err }));
+
+      if (this.inProgressSet.has(absPath)) {
+        // Another indexFile() for this path is still awaiting its embed call.
+        // Mark it so we re-index immediately once that call finishes, rather
+        // than letting the two calls race on the same SQLite rows.
+        this.pendingSet.add(absPath);
+        return;
+      }
+
+      this.runIndex(col, absPath);
     }, this.debounceMs);
     this.debounceMap.set(absPath, timer);
+  }
+
+  private runIndex(col: CollectionWatch, absPath: string): void {
+    this.inProgressSet.add(absPath);
+    indexFile(this.store, this.client, col.collection, absPath)
+      .then((result) => this.emit("event", { type: "indexed", result }))
+      .catch((err) => this.emit("event", { type: "error", path: absPath, error: err }))
+      .finally(() => {
+        this.inProgressSet.delete(absPath);
+        if (this.pendingSet.has(absPath)) {
+          this.pendingSet.delete(absPath);
+          // A change arrived while we were in flight — re-index immediately.
+          const col2 = this.collectionForPath(absPath);
+          if (col2) this.runIndex(col2, absPath);
+        }
+      });
   }
 
   private handleUnlink(absPath: string): void {
