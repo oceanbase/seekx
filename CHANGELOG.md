@@ -7,6 +7,23 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.2.3] — 2026-04-10
+
+### Added
+
+- **`seekx` / `seekx-core`**: `README.md` in each published package directory for npm package pages.
+- **`seekx` / `seekx-core`**: `description` and `keywords` in `package.json` for npm discovery and listing metadata.
+
+### Changed
+
+- **`seekx-core`**: Released **0.2.1** (patch bump with the npm metadata above).
+
+### Fixed
+
+- **`seekx` (0.2.3)**: Published tarball listed `seekx-core` as `workspace:*`, which npm clients cannot resolve from the registry; dependency is now `seekx-core: ^0.2.1`. **Avoid `seekx@0.2.2`** for installs from npm; use **0.2.3** or later.
+
+---
+
 ## [0.2.1] — 2026-04-09
 
 ### Fixed

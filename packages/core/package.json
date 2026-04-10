@@ -1,6 +1,20 @@
 {
   "name": "seekx-core",
-  "version": "0.2.0",
+  "version": "0.2.1",
+  "description": "seekx engine: SQLite store, hybrid search (BM25 + vector + RRF), indexing, and file watching. TypeScript sources for Bun.",
+  "keywords": [
+    "seekx",
+    "seekx-core",
+    "search",
+    "hybrid-search",
+    "bm25",
+    "vector-search",
+    "sqlite",
+    "fts5",
+    "embeddings",
+    "indexing",
+    "rag"
+  ],
   "type": "module",
   "repository": {
     "type": "git",
