@@ -32,6 +32,8 @@ seekx search "how do agents use tool calling"
 
 以上です。メモがインデックスされ、検索できるようになります。
 
+seekx が役に立ったと感じたら、[GitHub](https://github.com/oceanbase/seekx) で ⭐ を付けていただけるととても助かります！
+
 ## なぜ seekx か？
 
 Markdown、メモ、ドキュメントが何百もあり、フォルダに散らばっている。Spotlight はファイル名を、Grep は完全一致の文字列を見つける。どちらも、あなたが*本当に探しているもの*を理解しない。

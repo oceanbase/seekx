@@ -32,6 +32,8 @@ seekx search "how do agents use tool calling"
 
 끝입니다. 메모가 인덱싱되면 검색할 수 있습니다.
 
+seekx가 유용하셨다면 [GitHub](https://github.com/oceanbase/seekx)에 ⭐를 남겨 주세요 — 큰 도움이 됩니다!
+
 ## 왜 seekx인가?
 
 수백 개의 Markdown, 메모, 문서가 폴더마다 흩어져 있습니다. Spotlight는 파일 이름을, Grep은 정확한 문자열을 찾습니다. 둘 다 당신이 *무엇을 찾고 있는지* 이해하지 못합니다.

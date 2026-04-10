@@ -32,6 +32,8 @@ seekx search "how do agents use tool calling"
 
 就是这样。笔记被索引后，即可搜索。
 
+如果你觉得 seekx 有用，欢迎在 [GitHub](https://github.com/oceanbase/seekx) 上给我们一颗 ⭐——这很有帮助！
+
 ## 为什么选择 seekx？
 
 你有成百上千的 Markdown、笔记、文档——散落在各个文件夹里。Spotlight 找文件名，Grep 找精确字符串。它们都不理解你*真正想找什么*。

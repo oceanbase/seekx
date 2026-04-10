@@ -32,6 +32,8 @@ seekx search "how do agents use tool calling"
 
 That's it. Your notes are indexed, and you're searching.
 
+If you find seekx useful, please consider giving it a ⭐ on [GitHub](https://github.com/oceanbase/seekx) — it really helps!
+
 ## Why seekx?
 
 You have hundreds of Markdown files, notes, docs — scattered across folders. Spotlight finds filenames. Grep finds exact strings. Neither understands what you're *looking for*.
