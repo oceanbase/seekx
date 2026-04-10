@@ -14,6 +14,13 @@
   </p>
 </p>
 
+<p align="center">
+  <b>English</b> |
+  <a href="README.zh-CN.md">简体中文</a> |
+  <a href="README.ja.md">日本語</a> |
+  <a href="README.ko.md">한국어</a>
+</p>
+
 ---
 
 Index once, find anything. seekx brings hybrid search to your local documents — just your files and a single command.
