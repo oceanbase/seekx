@@ -1,9 +1,10 @@
 /**
  * status.ts — seekx status
  *
- * Shows environment health (sqlite-vec, embed API) and full index statistics
- * from store.getStatus(): document/chunk counts, embedding coverage,
- * embed model name and dimension.
+ * Shows environment health (sqlite-vec extension, embed API) and full index
+ * statistics from store.getStatus(): document/chunk counts, embedding coverage,
+ * embed model name and dimension. `vectorSearchAvailable` in JSON is true only
+ * after the first embed has created vec_chunks (embed_dim known).
  */
 
 import { isEmbedConfigured } from "seekx-core";

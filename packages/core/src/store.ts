@@ -75,6 +75,9 @@ export interface IndexStatus {
   totalDocuments: number;
   totalChunks: number;
   embeddedChunks: number;
+  /** True when the sqlite-vec native extension loaded successfully. */
+  sqliteVecLoaded: boolean;
+  /** True when extension is loaded and vec_chunks has been created (embed_dim known). */
   vectorSearchAvailable: boolean;
   embedModel: string | null;
   embedDim: number | null;
@@ -691,6 +694,7 @@ export class Store {
       totalDocuments,
       totalChunks,
       embeddedChunks,
+      sqliteVecLoaded: this.vecLoaded,
       vectorSearchAvailable: this.vecLoaded && this.vecDim !== null,
       embedModel: this.getMeta("embed_model"),
       embedDim: this.vecDim,

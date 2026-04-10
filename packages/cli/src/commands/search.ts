@@ -17,6 +17,7 @@ export function registerSearch(program: Command): void {
     .description("Search across all collections (full-text + semantic)")
     .option("-c, --collection <name>", "Restrict search to a specific collection")
     .option("-n, --limit <number>", "Maximum number of results")
+    .option("--min-score <number>", "Minimum vector similarity score before RRF (0–1, default from config)")
     .option("--no-rerank", "Disable cross-encoder reranking")
     .option("--no-expand", "Disable query expansion")
     .option("--json", "Machine-readable output")
@@ -28,6 +29,7 @@ export function registerSearch(program: Command): void {
         opts: {
           collection?: string;
           limit?: string;
+          minScore?: string;
           rerank: boolean;
           expand: boolean;
           json?: boolean;
@@ -45,13 +47,21 @@ export function registerSearch(program: Command): void {
           die("--limit must be a positive integer.", EXIT.USER_ERROR, json);
         }
 
+        const minScore =
+          opts.minScore !== undefined
+            ? Number.parseFloat(opts.minScore)
+            : cfg.search.minScore;
+        if (Number.isNaN(minScore) || minScore < 0 || minScore > 1) {
+          die("--min-score must be a number between 0 and 1.", EXIT.USER_ERROR, json);
+        }
+
         const progress = createSearchProgressReporter({ enabled: !json });
         const { results, expandedQueries, warnings } = await (async () => {
           try {
             return await hybridSearch(store, client, query, {
               ...(opts.collection ? { collections: [opts.collection] } : {}),
               limit,
-              minScore: cfg.search.minScore,
+              minScore,
               minResultScore: cfg.search.minResultScore,
               mode: "hybrid",
               useRerank: opts.rerank && cfg.search.rerank,

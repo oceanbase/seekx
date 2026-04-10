@@ -171,6 +171,7 @@ export interface StatusData {
   totalDocuments: number;
   totalChunks: number;
   embeddedChunks: number;
+  sqliteVecLoaded: boolean;
   vectorSearchAvailable: boolean;
   embedModel: string | null;
   embedDim: number | null;
@@ -194,7 +195,9 @@ export function formatStatus(data: StatusData, opts: { json?: boolean | undefine
 
   console.log("\x1b[1mseekx status\x1b[0m");
   console.log(`  database     ${data.dbPath}`);
-  console.log(`  sqlite-vec   ${ok(data.vectorSearchAvailable)}`);
+  // Match `seekx onboard`: this line reflects extension load only. Full vector
+  // search also needs embed_dim (set on first successful embed) — see vectorSearchAvailable in --json.
+  console.log(`  sqlite-vec   ${ok(data.sqliteVecLoaded)}`);
   console.log(`  embed API    ${ok(data.embedOk)}`);
 
   if (data.embedModel) {

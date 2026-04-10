@@ -254,6 +254,31 @@ describe("vec_chunks cleanup on document deletion", () => {
   });
 });
 
+describe("getStatus", () => {
+  test("sqliteVecLoaded follows vecLoaded; vectorSearchAvailable needs embed_dim", async () => {
+    const d = await openDatabase(":memory:");
+    try {
+      let s = new Store(d, false);
+      let st = s.getStatus();
+      expect(st.sqliteVecLoaded).toBe(false);
+      expect(st.vectorSearchAvailable).toBe(false);
+
+      s = new Store(d, true);
+      st = s.getStatus();
+      expect(st.sqliteVecLoaded).toBe(true);
+      expect(st.vectorSearchAvailable).toBe(false);
+
+      s.setMeta("embed_dim", "384");
+      s = new Store(d, true);
+      st = s.getStatus();
+      expect(st.sqliteVecLoaded).toBe(true);
+      expect(st.vectorSearchAvailable).toBe(true);
+    } finally {
+      d.close();
+    }
+  });
+});
+
 describe("Meta KV", () => {
   test("setMeta and getMeta", () => {
     store.setMeta("version", "1");
