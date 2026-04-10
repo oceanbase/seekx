@@ -293,18 +293,66 @@ Index  (~/.seekx/index.sqlite)
 
 ## Non-Interactive Mode
 
-For scripting and CI, all interactive steps can be bypassed via environment
-variables and flags:
+For scripting and CI, all interactive steps can be bypassed via flags and
+environment variables.
+
+### Flags
+
+| Flag | Behaviour |
+|------|-----------|
+| `-y, --yes` | Skip all confirmation prompts; accept safe defaults. |
+| `--provider <key>` | Select a preset without the interactive `select` menu. Required when `--yes` is used. |
+| `--skip-health-check` | Bypass Step 3 (API connectivity check). Useful when the API is known-good or offline. |
+| `--no-watch` | Skip Step 5 (daemon auto-start). |
+
+### Environment variables
+
+| Variable | Effect |
+|----------|--------|
+| `SEEKX_PROVIDER` | Equivalent to `--provider <key>` |
+| `SEEKX_API_KEY` | Embed API key (also default for rerank/expand when using a named preset) |
+| `SEEKX_BASE_URL` | Embed base URL (required for `custom` provider) |
+| `SEEKX_EMBED_MODEL` | Overrides preset default embed model |
+| `SEEKX_RERANK_MODEL` | Sets rerank model; enables rerank in `--yes` mode for `custom` provider |
+| `SEEKX_EXPAND_MODEL` | Sets expand model; enables expand in `--yes` mode for `custom` provider |
+| `SEEKX_RERANK_BASE_URL` / `SEEKX_RERANK_API_KEY` | Independent rerank endpoint; falls back to embed values |
+| `SEEKX_EXPAND_BASE_URL` / `SEEKX_EXPAND_API_KEY` | Independent expand endpoint; falls back to embed values |
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Setup complete |
+| `1` | User cancelled (interactive mode only) |
+| `2` | Missing required arg in `--yes` mode (`--provider`, `SEEKX_API_KEY`, etc.) |
+| `3` | Health check failed without `--skip-health-check` |
+
+### Examples
 
 ```bash
+# Minimal: named preset with API key
+SEEKX_API_KEY=sk-xxx seekx onboard --yes --provider siliconflow
+
+# No-key provider (Ollama)
+seekx onboard --yes --provider ollama --skip-health-check --no-watch
+
+# Full custom endpoint with rerank and expand
 SEEKX_API_KEY=sk-xxx \
 SEEKX_BASE_URL=https://api.siliconflow.cn/v1 \
-SEEKX_EMBED_MODEL=Qwen/Qwen3-Embedding-0.6B \
-SEEKX_RERANK_MODEL=Qwen/Qwen3-Reranker-0.6B \
+SEEKX_EMBED_MODEL=BAAI/bge-m3 \
+SEEKX_RERANK_MODEL=BAAI/bge-reranker-v2-m3 \
 SEEKX_EXPAND_MODEL=Qwen/Qwen3-8B \
-  seekx onboard --yes
+  seekx onboard --yes --provider custom --no-watch
 ```
 
-`--yes` skips all confirmation prompts and accepts all defaults. `--skip-env-check`
-skips Step 0 (useful when sqlite-vec is known to be unavailable and BM25-only is
-acceptable).
+### Behaviour in `--yes` mode per step
+
+| Step | Interactive | `--yes` mode |
+|------|-------------|--------------|
+| sqlite-vec missing (macOS) | Prompt to continue | Auto-continue; prints `⚠ Continuing without vector search` |
+| Provider selection | `select` menu | Must be set via `--provider` or `SEEKX_PROVIDER`; missing → exit 2 |
+| API key input | `input` | Must be set via `SEEKX_API_KEY`; missing for `needsKey` presets → exit 2 |
+| Model customisation | `confirm` + `input` | Reads from env vars; falls back to preset defaults |
+| rerank/expand (custom) | `confirm` per service | Enabled only if `SEEKX_RERANK_MODEL` / `SEEKX_EXPAND_MODEL` is set |
+| Health check failure | Prompt to save anyway | Exit 3 (unless `--skip-health-check`) |
+| Watch daemon | `confirm` (default yes) | Auto-start (unless `--no-watch`) |

@@ -47,22 +47,49 @@ Interactive setup wizard. Documented in full in
 [`docs/onboard-flow.md`](onboard-flow.md).
 
 ```
-seekx onboard [--yes]
+seekx onboard [--yes] [--provider <key>] [--skip-health-check] [--no-watch]
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--yes` | Accept all defaults, skip confirmations. For CI / scripting. |
+| `-y, --yes` | Accept all defaults, skip confirmations. For CI / scripting. |
+| `--provider <key>` | Provider preset: `siliconflow\|zhipu\|jina\|openai\|ollama\|custom` (or set `SEEKX_PROVIDER`). Required when `--yes` is passed. |
+| `--skip-health-check` | Skip API connectivity verification. |
+| `--no-watch` | Do not start the background watch daemon after setup. |
+
+Exit codes in non-interactive mode:
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | User explicitly cancelled (interactive mode only) |
+| `2` | Missing required argument (`--provider`, `SEEKX_API_KEY`, etc.) |
+| `3` | Health check failed and `--skip-health-check` was not passed |
 
 Environment variable shortcuts for non-interactive mode:
 
+| Variable | Field |
+|----------|-------|
+| `SEEKX_PROVIDER` | Provider preset key (equivalent to `--provider`) |
+| `SEEKX_API_KEY` | `embed.api_key` (also default for rerank/expand) |
+| `SEEKX_BASE_URL` | `embed.base_url` (required for `custom` provider) |
+| `SEEKX_EMBED_MODEL` | `embed.model` (overrides preset default) |
+| `SEEKX_RERANK_MODEL` | `rerank.model` (enables rerank when set) |
+| `SEEKX_EXPAND_MODEL` | `expand.model` (enables expand when set) |
+| `SEEKX_RERANK_BASE_URL` / `SEEKX_RERANK_API_KEY` | Independent rerank endpoint (falls back to embed values) |
+| `SEEKX_EXPAND_BASE_URL` / `SEEKX_EXPAND_API_KEY` | Independent expand endpoint (falls back to embed values) |
+
 ```bash
+# Minimal: named preset, only API key required
+SEEKX_API_KEY=sk-xxx seekx onboard --yes --provider siliconflow
+
+# Full custom endpoint
 SEEKX_API_KEY=sk-xxx \
 SEEKX_BASE_URL=https://api.siliconflow.cn/v1 \
-SEEKX_EMBED_MODEL=Qwen/Qwen3-Embedding-0.6B \
-SEEKX_RERANK_MODEL=Qwen/Qwen3-Reranker-0.6B \
+SEEKX_EMBED_MODEL=BAAI/bge-m3 \
+SEEKX_RERANK_MODEL=BAAI/bge-reranker-v2-m3 \
 SEEKX_EXPAND_MODEL=Qwen/Qwen3-8B \
-  seekx onboard --yes
+  seekx onboard --yes --provider custom --no-watch
 ```
 
 **Output (interactive):**
