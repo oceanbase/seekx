@@ -24,6 +24,13 @@ afterEach(async () => {
   db.close();
 });
 
+describe("Database pragmas", () => {
+  test("configures a busy timeout for write contention", () => {
+    const row = db.query("PRAGMA busy_timeout;").get() as { timeout?: number } | null;
+    expect(row?.timeout).toBe(5000);
+  });
+});
+
 describe("Collection CRUD", () => {
   test("addCollection and getCollection", () => {
     store.addCollection({ name: "notes", path: "/home/user/notes", description: "My notes" });

@@ -234,7 +234,9 @@ export class Store {
     runMigrations(db);
 
     // Enable WAL mode and foreign keys for better concurrency + integrity.
-    this.db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
+    // busy_timeout turns brief writer collisions (e.g. watch vs add) into
+    // short waits instead of immediate "database is locked" failures.
+    this.db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
 
     // Read previously stored embed dim if any.
     const dim = this.getMeta("embed_dim");

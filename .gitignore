@@ -23,3 +23,9 @@ coverage/
 
 # Project-local planning docs (not tracked)
 seekx-plan.md
+
+# Benchmark working data and Python cache
+bench/data*/
+bench/__pycache__/
+bench/*.pyc
+*.swp

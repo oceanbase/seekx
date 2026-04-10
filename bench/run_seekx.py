@@ -1,30 +1,8 @@
 """
-run_seekx.py — Run seekx search for each MIRACL-zh query and collect ranked results.
+run_seekx.py — Run seekx over benchmark queries and emit a TREC run file.
 
-For each query in queries.jsonl, this script invokes:
-  seekx search --json --no-rerank --no-expand -n {top_k} "<query>"
-
-Flags rationale
----------------
---no-rerank  Disables the cross-encoder reranker, which makes latency acceptable
-             for 393 sequential queries. Run with --rerank to enable it (slow).
---no-expand  Disables LLM query expansion. Use --expand to enable (requires
-             expand API to be configured).
--n {top_k}   Retrieve up to top_k results per query (default: 10).
-
-The "file" field in each JSON result is the path relative to the collection
-directory, e.g. "0_1234.md".  We strip the ".md" suffix and use docid_map.json
-to reverse-map back to the original MIRACL docid for evaluation.
-
-Outputs (appended to --out-dir):
-  results_seekx.jsonl   One JSON object per query:
-                          {query_id, query, hits: [{rank, doc_id, score, file}]}
-
-Usage
------
-  python3 bench/run_seekx.py [--data-dir bench/data] [--top-k 10]
-                             [--collection miracl-zh] [--rerank] [--expand]
-                             [--seekx seekx]
+The seekx CLI returns chunk-level results. This script collapses those hits back
+to document-level docids before ranking and evaluation.
 """
 
 from __future__ import annotations
@@ -35,11 +13,22 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
+
+try:
+    from miracl_benchmark import aggregate_hits_by_docid, format_trec_run_line, load_queries_jsonl
+except ImportError:
+    from bench.miracl_benchmark import aggregate_hits_by_docid, format_trec_run_line, load_queries_jsonl
 
 
-def load_jsonl(path: str) -> list[dict]:
-    with open(path, encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
+def load_seekx_results(stdout: str) -> list[dict] | None:
+    if not stdout.strip():
+        return []
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError:
+        return None
+    return payload.get("results", [])
 
 
 def run_seekx(
@@ -47,19 +36,12 @@ def run_seekx(
     *,
     seekx_bin: str,
     collection: str,
-    top_k: int,
+    limit: int,
     rerank: bool,
     expand: bool,
     min_score: float = 0.0,
 ) -> list[dict] | None:
-    """
-    Invoke seekx search and return the list of hits, or None on failure.
-
-    seekx exits with code 1 when no results, 2 when API is degraded.
-    Both cases are treated as valid (empty or partial results).
-    """
-    cmd = [seekx_bin, "search", "--json", "-n", str(top_k), "-c", collection,
-           "--min-score", str(min_score)]
+    cmd = [seekx_bin, "search", "--json", "-n", str(limit), "-c", collection, "--min-score", str(min_score)]
     if not rerank:
         cmd.append("--no-rerank")
     if not expand:
@@ -71,188 +53,216 @@ def run_seekx(
             cmd,
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=120,
         )
     except subprocess.TimeoutExpired:
-        print(f"  [TIMEOUT] query={query[:60]!r}", file=sys.stderr)
+        print(f"  [TIMEOUT] query={query[:80]!r}", file=sys.stderr)
         return None
-    except Exception as e:
-        print(f"  [ERROR] {e}", file=sys.stderr)
+    except Exception as exc:
+        print(f"  [ERROR] {exc}", file=sys.stderr)
         return None
 
-    if not proc.stdout.strip():
-        return []
-
-    try:
-        data = json.loads(proc.stdout)
-    except json.JSONDecodeError:
+    results = load_seekx_results(proc.stdout)
+    if results is None:
         print(f"  [JSON ERROR] stdout={proc.stdout[:200]!r}", file=sys.stderr)
-        return None
-
-    return data.get("results", [])
+    return results
 
 
-def file_to_safe_docid(file_path: str) -> str:
-    """Strip directory prefix and .md suffix to get the safe docid."""
-    base = os.path.basename(file_path)
-    if base.endswith(".md"):
-        base = base[:-3]
-    return base
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Run seekx on MIRACL-zh benchmark queries.")
-    parser.add_argument("--data-dir", default="bench/data", help="Data dir from prepare step (default: bench/data)")
-    parser.add_argument("--top-k", type=int, default=10, help="Results per query (default: 10)")
-    parser.add_argument("--collection", default="miracl-zh", help="seekx collection name (default: miracl-zh)")
-    parser.add_argument("--rerank", action="store_true", help="Enable cross-encoder reranking (slower)")
-    parser.add_argument("--expand", action="store_true", help="Enable LLM query expansion (requires expand API)")
-    parser.add_argument("--seekx", default="seekx", help="Path/name of seekx binary (default: seekx)")
-    parser.add_argument("--max-queries", type=int, default=0, help="Cap queries for a quick smoke test (0 = all)")
-    parser.add_argument(
-        "--min-score",
-        type=float,
-        default=0.0,
-        help="Minimum vector similarity score before RRF fusion (default: 0, overrides config)",
-    )
-    args = parser.parse_args()
-
-    data_dir = args.data_dir
-    queries_path = os.path.join(data_dir, "queries.jsonl")
-    docid_map_path = os.path.join(data_dir, "docid_map.json")
-    out_path = os.path.join(data_dir, "results_seekx.jsonl")
-
-    if not os.path.exists(queries_path):
-        sys.exit(f"queries.jsonl not found at {queries_path}. Run prepare_miracl_zh.py first.")
-
-    queries = load_jsonl(queries_path)
-    if args.max_queries > 0:
-        queries = queries[: args.max_queries]
-
-    with open(docid_map_path, encoding="utf-8") as f:
-        docid_map: dict[str, str] = json.load(f)
-
-    mode_parts = []
-    if args.rerank:
-        mode_parts.append("rerank")
-    if args.expand:
-        mode_parts.append("expand")
-    mode_label = "+".join(mode_parts) if mode_parts else "bm25+vec"
-    print(f"seekx mode   : hybrid ({mode_label})")
-    print(f"min-score    : {args.min_score}  (vector pre-RRF filter; 0 = no filtering)")
-    print(f"top-k        : {args.top_k}")
-    print(f"collection   : {args.collection}")
-    print(f"queries      : {len(queries)}")
-    print(f"output       : {out_path}")
-
-    # Pre-flight: verify seekx status and API availability
+def preflight(args: argparse.Namespace) -> None:
     print("\n[pre-flight] Checking seekx status and API health…")
     try:
         status_proc = subprocess.run(
             [args.seekx, "status", "--json"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         if status_proc.returncode == 0 and status_proc.stdout.strip():
             status = json.loads(status_proc.stdout)
             vec_ok = status.get("vectorSearchAvailable", False)
-            print(f"  vector search available : {'✓' if vec_ok else '✗ (embedding not done or sqlite-vec missing)'}")
+            print(f"  vector search available : {'yes' if vec_ok else 'no'}")
             if not vec_ok:
-                print("  WARNING: Vector search unavailable — only BM25 will contribute to results.")
-    except Exception as e:
-        print(f"  WARNING: Could not run seekx status: {e}")
+                print("  WARNING: Vector search unavailable. Hybrid benchmark numbers may not be representative.")
+    except Exception as exc:
+        print(f"  WARNING: Could not run seekx status: {exc}")
 
-    if args.rerank or args.expand:
-        try:
-            health_proc = subprocess.run(
-                [args.seekx, "config", "get", "provider.base_url"],
-                capture_output=True, text=True, timeout=10,
-            )
-        except Exception:
-            health_proc = None
+    if args.rerank:
+        rerank_proc = subprocess.run(
+            [args.seekx, "config", "get", "provider.rerank_model"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        rerank_model = rerank_proc.stdout.strip()
+        print(f"  rerank model            : {rerank_model or '(not configured)'}")
 
-        if args.rerank:
-            rerank_model_proc = subprocess.run(
-                [args.seekx, "config", "get", "provider.rerank_model"],
-                capture_output=True, text=True, timeout=10,
-            )
-            rerank_model = rerank_model_proc.stdout.strip()
-            if not rerank_model:
-                print("  WARNING: --rerank enabled but no rerank model configured. Reranking will be skipped.")
-            else:
-                print(f"  rerank model : {rerank_model}")
-
-        if args.expand:
-            expand_model_proc = subprocess.run(
-                [args.seekx, "config", "get", "provider.expand_model"],
-                capture_output=True, text=True, timeout=10,
-            )
-            expand_model = expand_model_proc.stdout.strip()
-            if not expand_model:
-                print("  WARNING: --expand enabled but no expand model configured. Query expansion will be skipped.")
-            else:
-                print(f"  expand model : {expand_model}")
-
+    if args.expand:
+        expand_proc = subprocess.run(
+            [args.seekx, "config", "get", "provider.expand_model"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        expand_model = expand_proc.stdout.strip()
+        print(f"  expand model            : {expand_model or '(not configured)'}")
     print()
 
-    out_f = open(out_path, "w", encoding="utf-8")
+
+def default_run_name(args: argparse.Namespace) -> str:
+    parts = ["seekx-hybrid"]
+    if args.rerank:
+        parts.append("rerank")
+    if args.expand:
+        parts.append("expand")
+    return "+".join(parts)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run seekx on benchmark queries and emit a TREC run.")
+    parser.add_argument("--data-dir", default="bench/data", help="Data dir from prepare step (default: bench/data)")
+    parser.add_argument("--collection", default="miracl-zh", help="seekx collection name (default: miracl-zh)")
+    parser.add_argument("--rerank", action="store_true", help="Enable cross-encoder reranking")
+    parser.add_argument("--expand", action="store_true", help="Enable LLM query expansion")
+    parser.add_argument("--seekx", default="seekx", help="Path/name of seekx binary (default: seekx)")
+    parser.add_argument("--max-queries", type=int, default=0, help="Cap queries for a smoke test (0 = all)")
+    parser.add_argument(
+        "--run-depth",
+        "--top-k",
+        dest="run_depth",
+        type=int,
+        default=1000,
+        help="Number of doc-level results to keep in the TREC run (default: 1000)",
+    )
+    parser.add_argument(
+        "--search-limit",
+        type=int,
+        default=0,
+        help="Raw chunk-level limit passed to `seekx search` (default: max(run_depth*4, 200))",
+    )
+    parser.add_argument(
+        "--min-score",
+        type=float,
+        default=0.0,
+        help="Minimum vector similarity score before RRF fusion (default: 0)",
+    )
+    parser.add_argument(
+        "--run-name",
+        default="",
+        help="System name written to the TREC run file (default: derived from flags)",
+    )
+    parser.add_argument(
+        "--jsonl-out",
+        default="",
+        help="Output path for aggregated JSONL results (default: <data-dir>/results_seekx.jsonl)",
+    )
+    parser.add_argument(
+        "--trec-out",
+        default="",
+        help="Output path for TREC run (default: <data-dir>/results_seekx.trec)",
+    )
+    args = parser.parse_args()
+
+    data_dir = Path(args.data_dir)
+    queries_path = data_dir / "queries.jsonl"
+    jsonl_out = Path(args.jsonl_out) if args.jsonl_out else data_dir / "results_seekx.jsonl"
+    trec_out = Path(args.trec_out) if args.trec_out else data_dir / "results_seekx.trec"
+    run_name = args.run_name or default_run_name(args)
+    search_limit = args.search_limit or max(args.run_depth * 4, 200)
+
+    if not queries_path.exists():
+        sys.exit(f"queries.jsonl not found at {queries_path}. Run the dataset prepare step first.")
+    if args.run_depth < 1:
+        sys.exit("--run-depth must be a positive integer.")
+    if search_limit < args.run_depth:
+        sys.exit("--search-limit must be >= --run-depth so doc aggregation has enough candidates.")
+
+    queries = load_queries_jsonl(queries_path)
+    if args.max_queries > 0:
+        queries = queries[: args.max_queries]
+
+    print("seekx benchmark run")
+    print(f"  data dir     : {data_dir}")
+    print(f"  collection   : {args.collection}")
+    print(f"  queries      : {len(queries)}")
+    print(f"  run depth    : {args.run_depth}")
+    print(f"  search limit : {search_limit}")
+    print(f"  run name     : {run_name}")
+    print(f"  rerank       : {args.rerank}")
+    print(f"  expand       : {args.expand}")
+    print(f"  min score    : {args.min_score}")
+    print(f"  jsonl out    : {jsonl_out}")
+    print(f"  trec out     : {trec_out}")
+
+    preflight(args)
+
+    jsonl_out.parent.mkdir(parents=True, exist_ok=True)
+    trec_out.parent.mkdir(parents=True, exist_ok=True)
+
     ok = 0
     empty = 0
     errors = 0
     t0 = time.time()
 
-    for i, q in enumerate(queries, 1):
-        qid = q["query_id"]
-        text = q["query"]
-        hits_raw = run_seekx(
-            text,
-            seekx_bin=args.seekx,
-            collection=args.collection,
-            top_k=args.top_k,
-            rerank=args.rerank,
-            expand=args.expand,
-            min_score=args.min_score,
-        )
+    with jsonl_out.open("w", encoding="utf-8") as jsonl_handle, trec_out.open("w", encoding="utf-8") as trec_handle:
+        for idx, query in enumerate(queries, start=1):
+            query_id = str(query["query_id"])
+            text = str(query["query"])
+            raw_hits = run_seekx(
+                text,
+                seekx_bin=args.seekx,
+                collection=args.collection,
+                limit=search_limit,
+                rerank=args.rerank,
+                expand=args.expand,
+                min_score=args.min_score,
+            )
 
-        if hits_raw is None:
-            errors += 1
-            hits = []
-        elif len(hits_raw) == 0:
-            empty += 1
-            hits = []
-        else:
-            ok += 1
-            hits = []
-            for rank, h in enumerate(hits_raw, 1):
-                safe = file_to_safe_docid(h.get("file", ""))
-                original_docid = docid_map.get(safe, safe)
-                hits.append(
-                    {
-                        "rank": rank,
-                        "doc_id": original_docid,
-                        "score": h.get("score", 0.0),
-                        "file": h.get("file", ""),
-                    }
+            if raw_hits is None:
+                errors += 1
+                doc_hits: list[dict] = []
+            elif not raw_hits:
+                empty += 1
+                doc_hits = []
+            else:
+                ok += 1
+                doc_hits = aggregate_hits_by_docid(raw_hits, args.run_depth)
+
+            record = {
+                "query_id": query_id,
+                "query": text,
+                "run_name": run_name,
+                "raw_hit_count": 0 if raw_hits is None else len(raw_hits),
+                "hits": doc_hits,
+            }
+            jsonl_handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+            jsonl_handle.flush()
+
+            for hit in doc_hits:
+                trec_handle.write(
+                    format_trec_run_line(
+                        query_id=query_id,
+                        doc_id=str(hit["doc_id"]),
+                        rank=int(hit["rank"]),
+                        score=float(hit["score"]),
+                        system_name=run_name,
+                    )
+                    + "\n"
                 )
+            trec_handle.flush()
 
-        record = {"query_id": qid, "query": text, "hits": hits}
-        out_f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        out_f.flush()
+            elapsed = time.time() - t0
+            avg_s = elapsed / idx
+            eta_s = avg_s * (len(queries) - idx)
+            print(
+                f"  [{idx:3d}/{len(queries)}] raw={0 if raw_hits is None else len(raw_hits):4d} "
+                f"docs={len(doc_hits):4d} avg={avg_s:.2f}s ETA={eta_s:.0f}s {text[:50]!r}",
+                flush=True,
+            )
 
-        elapsed = time.time() - t0
-        avg_s = elapsed / i
-        eta_s = avg_s * (len(queries) - i)
-        print(
-            f"  [{i:3d}/{len(queries)}] hits={len(hits):2d}  "
-            f"avg={avg_s:.2f}s  ETA={eta_s:.0f}s  {text[:50]!r}",
-            flush=True,
-        )
-
-    out_f.close()
     total = time.time() - t0
-    print(f"\nDone in {total:.1f}s  (ok={ok}  empty={empty}  errors={errors})")
-    print(f"Results → {out_path}")
-    print("\nNext step:")
-    print(f"  python3 bench/eval_ir.py --data-dir {data_dir}")
+    print(f"\nDone in {total:.1f}s (ok={ok} empty={empty} errors={errors})")
+    print(f"Aggregated JSONL → {jsonl_out}")
+    print(f"TREC run        → {trec_out}")
 
 
 if __name__ == "__main__":

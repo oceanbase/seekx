@@ -1,33 +1,20 @@
 #!/usr/bin/env bash
-# run_all.sh — Official MIRACL-zh benchmark driver for seekx.
-#
-# Stages:
-#   prepare-topics-qrels  Download official zh dev topics/qrels
-#   prepare-corpus        Download and materialize the full zh corpus
-#   index                 Index the corpus with seekx add
-#   search-baseline       Run seekx hybrid without rerank/expand
-#   search-full           Run seekx hybrid with optional rerank/expand
-#   evaluate              Score TREC runs with trec_eval or the fallback evaluator
-#
-# Examples:
-#   bash bench/run_all.sh
-#   STAGES=prepare-topics-qrels,prepare-corpus bash bench/run_all.sh
-#   STAGES=evaluate DATA_DIR=bench/data-official bash bench/run_all.sh
+# run_scifact.sh — Small BEIR SciFact benchmark driver for seekx.
 
 set -euo pipefail
 
-DATA_DIR="${DATA_DIR:-bench/data}"
-COLLECTION="${COLLECTION:-miracl-zh}"
+DATA_DIR="${DATA_DIR:-bench/data-scifact}"
+COLLECTION="${COLLECTION:-scifact}"
 SEEKX_BIN="${SEEKX_BIN:-seekx}"
 STAGES="${STAGES:-all}"
 MAX_QUERIES="${MAX_QUERIES:-0}"
 PREP_MAX_DOCS="${PREP_MAX_DOCS:-0}"
-RUN_DEPTH="${RUN_DEPTH:-1000}"
+RUN_DEPTH="${RUN_DEPTH:-100}"
 EVAL_K="${EVAL_K:-10}"
 RECALL_K="${RECALL_K:-100}"
 MIN_SCORE="${MIN_SCORE:-0}"
-ENABLE_RERANK="${ENABLE_RERANK:-1}"
-ENABLE_EXPAND="${ENABLE_EXPAND:-1}"
+ENABLE_RERANK="${ENABLE_RERANK:-0}"
+ENABLE_EXPAND="${ENABLE_EXPAND:-0}"
 TREC_EVAL_BIN="${TREC_EVAL_BIN:-}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,8 +23,7 @@ cd "${REPO_ROOT}"
 
 DOCS_DIR="${DATA_DIR}/docs"
 MANIFEST_PATH="${DATA_DIR}/benchmark_manifest.json"
-TOPICS_PATH="${DATA_DIR}/topics.dev.tsv"
-QRELS_PATH="${DATA_DIR}/qrels.dev.tsv"
+QRELS_PATH="${DATA_DIR}/qrels.test.tsv"
 
 BASELINE_JSONL="${DATA_DIR}/results_seekx_hybrid.jsonl"
 BASELINE_TREC="${DATA_DIR}/results_seekx_hybrid.trec"
@@ -53,7 +39,7 @@ stage_enabled() {
 }
 
 echo "=================================================="
-echo "  seekx × Official MIRACL-zh Benchmark"
+echo "  seekx × SciFact Benchmark"
 echo "=================================================="
 echo "  data dir      : ${DATA_DIR}"
 echo "  collection    : ${COLLECTION}"
@@ -63,25 +49,20 @@ echo "  eval ndcg@k   : ${EVAL_K}"
 echo "  eval recall@k : ${RECALL_K}"
 echo "  rerank        : ${ENABLE_RERANK}"
 echo "  expand        : ${ENABLE_EXPAND}"
-echo "  HF_ENDPOINT   : ${HF_ENDPOINT:-"(default huggingface.co)"}"
 echo "=================================================="
 echo
 
-echo "Resource notes:"
-echo "  - prepare-corpus materializes the full zh MIRACL corpus as one file per passage."
-echo "  - index is CPU/IO heavy and will take substantial time and disk."
-echo "  - search-full requires any configured rerank/expand providers to be healthy."
-echo
-
-if stage_enabled "prepare-topics-qrels"; then
-  echo "[Stage] prepare-topics-qrels"
-  python3 bench/prepare_miracl_zh.py     --out-dir "${DATA_DIR}"     --stage topics-qrels
-  echo
-fi
-
-if stage_enabled "prepare-corpus"; then
-  echo "[Stage] prepare-corpus"
-  python3 bench/prepare_miracl_zh.py     --out-dir "${DATA_DIR}"     --stage corpus     --max-docs "${PREP_MAX_DOCS}"
+if stage_enabled "prepare"; then
+  echo "[Stage] prepare"
+  PREP_ARGS=(
+    python3 bench/prepare_scifact.py
+    --out-dir "${DATA_DIR}"
+    --max-docs "${PREP_MAX_DOCS}"
+  )
+  if [[ "${MAX_QUERIES}" != "0" ]]; then
+    PREP_ARGS+=(--max-queries "${MAX_QUERIES}")
+  fi
+  "${PREP_ARGS[@]}"
   echo
 fi
 
@@ -185,7 +166,6 @@ if stage_enabled "evaluate"; then
   echo
 fi
 
-echo "Benchmark workflow complete."
+echo "SciFact benchmark workflow complete."
 echo "  Manifest : ${MANIFEST_PATH}"
-echo "  Topics   : ${TOPICS_PATH}"
 echo "  Qrels    : ${QRELS_PATH}"
