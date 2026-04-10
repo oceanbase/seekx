@@ -8,6 +8,7 @@
  */
 
 import type { Command } from "commander";
+import { CLI_VERSION } from "../version.ts";
 import { openContext } from "../utils.ts";
 
 export function registerMcp(program: Command): void {
@@ -28,7 +29,7 @@ export function registerMcp(program: Command): void {
 
       const server = new McpServer({
         name: "seekx",
-        version: "0.1.0",
+        version: CLI_VERSION,
         description: `seekx — context search engine. ${totalDocs} documents indexed across ${cols.length} collection(s): ${cols.map((c) => c.name).join(", ")}.`,
       });
 

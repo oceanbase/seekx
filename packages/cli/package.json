@@ -31,7 +31,7 @@
     "seekx": "./bin/seekx.js"
   },
   "scripts": {
-    "test": "bun test test/program.test.ts && bun test test/formatter.test.ts && bun test test/cli.integration.test.ts",
+    "test": "bun test test/program.test.ts && bun test test/version.test.ts && bun test test/formatter.test.ts && bun test test/cli.integration.test.ts",
     "typecheck": "tsc --noEmit",
     "dev": "bun run src/seekx.ts"
   },

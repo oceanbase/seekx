@@ -16,6 +16,7 @@ import { registerSearch } from "./commands/search.ts";
 import { registerStatus } from "./commands/status.ts";
 import { registerVsearch } from "./commands/vsearch.ts";
 import { registerWatch } from "./commands/watch.ts";
+import { CLI_VERSION } from "./version.ts";
 
 export function createProgram(): Command {
   const program = new Command();
@@ -27,7 +28,7 @@ export function createProgram(): Command {
         "Your files are the truth, seekx is just the index.\n" +
         "No GPU. Hybrid Search. Realtime Index.",
     )
-    .version("0.1.0")
+    .version(CLI_VERSION)
     .option("--json", "Machine-readable JSON output (propagated to subcommands)")
     .addHelpText(
       "after",
