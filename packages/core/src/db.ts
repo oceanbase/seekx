@@ -1,27 +1,30 @@
 /**
- * db.ts — Bun SQLite adapter with sqlite-vec extension support.
+ * db.ts — SQLite adapter with sqlite-vec extension support.
  *
- * On macOS, Bun uses the system SQLite compiled with SQLITE_OMIT_LOAD_EXTENSION,
- * which prevents loading native extensions like sqlite-vec. We swap in a
- * load-extension-capable SQLite via setCustomSQLite() before any database is
- * opened.
+ * - **Bun**: uses `bun:sqlite` with optional Homebrew SQLite on macOS so
+ *   `loadExtension` works for sqlite-vec (see comments in `loadBunSqliteOnce`).
+ * - **Node** (e.g. OpenClaw jiti): uses `better-sqlite3` because `bun:sqlite`
+ *   is not available there.
  *
- * We first honor SEEKX_SQLITE_PATH, then probe common Homebrew locations, then
- * ask Homebrew for its sqlite prefix. This keeps the happy path zero-config for
- * standard installs while preserving an explicit override for CI / custom
- * builds.
+ * `openDatabase` is async so callers stay compatible across backends and so
+ * `bun:sqlite` can be loaded lazily (no top-level await in this module).
  *
- * loadSqliteVec() returns false (never throws) when the extension is unavailable;
- * callers degrade to BM25-only mode.
+ * loadSqliteVec() returns false (never throws) when the extension is
+ * unavailable; callers degrade to BM25-only mode.
  */
 
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
+import BetterSqlite3 from "better-sqlite3";
+
+function isBunRuntime(): boolean {
+  return typeof (process.versions as { bun?: string }).bun === "string";
+}
 
 type BunSqlite = typeof import("bun:sqlite");
 
 /**
- * Lazily load `bun:sqlite` on first `openDatabase()` call.
+ * Lazily load `bun:sqlite` on first `openDatabase()` call under Bun.
  *
  * Top-level `await import("bun:sqlite")` breaks hosts that evaluate plugin
  * TypeScript in a non-async module wrapper (e.g. some OpenClaw / Node loaders),
@@ -89,13 +92,34 @@ export function getDarwinSQLiteCandidates(
   return [...new Set(candidates)];
 }
 
-export type Database = import("bun:sqlite").Database;
-export type Statement = ReturnType<Database["prepare"]>;
+/**
+ * Narrow DB surface used by Store. Bun and better-sqlite3 both satisfy this at
+ * runtime; we avoid a `Database` union so `prepare()` stays callable under tsc.
+ */
+export interface Database {
+  exec(sql: string): unknown;
+  prepare(sql: string): SqliteStatement;
+  close(): void;
+}
+
+export interface SqliteRunResult {
+  changes: number;
+  lastInsertRowid: number | bigint;
+}
+
+export interface SqliteStatement {
+  get(...params: unknown[]): unknown;
+  run(...params: unknown[]): SqliteRunResult;
+  all(...params: unknown[]): unknown;
+}
 
 /** Open (or create) a SQLite database at the given absolute path. */
 export async function openDatabase(path: string): Promise<Database> {
-  const mod = await ensureBunSqlite();
-  return new mod.Database(path) as Database;
+  if (isBunRuntime()) {
+    const mod = await ensureBunSqlite();
+    return new mod.Database(path) as unknown as Database;
+  }
+  return new BetterSqlite3(path) as unknown as Database;
 }
 
 /**

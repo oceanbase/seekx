@@ -1,8 +1,7 @@
 /**
  * store.test.ts — Unit tests for Store using an in-memory SQLite database.
  *
- * We can't use bun:sqlite directly (dynamic import in db.ts), so we let
- * Store accept a Database-like interface and use the real db.ts openDatabase.
+ * Uses the real db.ts openDatabase (better-sqlite3) for parity with production.
  * Tests run without sqlite-vec (vecLoaded = false).
  */
 
@@ -26,8 +25,11 @@ afterEach(async () => {
 
 describe("Database pragmas", () => {
   test("configures a busy timeout for write contention", () => {
-    const row = db.query("PRAGMA busy_timeout;").get() as { timeout?: number } | null;
-    expect(row?.timeout).toBe(5000);
+    const row = db.prepare("PRAGMA busy_timeout").get() as {
+      busy_timeout?: number;
+      timeout?: number;
+    } | null;
+    expect(row?.busy_timeout ?? row?.timeout).toBe(5000);
   });
 });
 

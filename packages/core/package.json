@@ -34,6 +34,7 @@
   },
   "dependencies": {
     "@node-rs/jieba": "^1.2.0",
+    "better-sqlite3": "^11.0.0",
     "chokidar": "^4.0.3",
     "yaml": "^2.8.0"
   },
@@ -46,6 +47,7 @@
     "sqlite-vec-windows-x64": "*"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
     "@types/bun": "latest"
   },
   "peerDependencies": {

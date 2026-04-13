@@ -39,21 +39,21 @@ describe("SQLite runtime discovery", () => {
     expect(candidates).toContain("/custom/prefix/lib/libsqlite3.dylib");
   });
 
-  test("openDatabase lazily loads bun:sqlite and can open :memory:", async () => {
+  test("openDatabase opens :memory: and runs simple queries", async () => {
     const db = await openDatabase(":memory:");
     try {
-      const row = db.query("SELECT 1 AS n").get() as { n: number };
+      const row = db.prepare("SELECT 1 AS n").get() as { n: number };
       expect(row.n).toBe(1);
     } finally {
       db.close();
     }
   });
 
-  test("parallel openDatabase calls share a single bun:sqlite load", async () => {
+  test("parallel openDatabase calls share a single bun:sqlite load on Bun", async () => {
     const [a, b] = await Promise.all([openDatabase(":memory:"), openDatabase(":memory:")]);
     try {
-      expect(a.query("SELECT 2 AS n").get() as { n: number }).toEqual({ n: 2 });
-      expect(b.query("SELECT 3 AS n").get() as { n: number }).toEqual({ n: 3 });
+      expect(a.prepare("SELECT 2 AS n").get() as { n: number }).toEqual({ n: 2 });
+      expect(b.prepare("SELECT 3 AS n").get() as { n: number }).toEqual({ n: 3 });
     } finally {
       a.close();
       b.close();
