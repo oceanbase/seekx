@@ -13,8 +13,8 @@ let store: Store;
 let tempRoot: string;
 let docsPath: string;
 
-beforeEach(() => {
-  db = openDatabase(":memory:");
+beforeEach(async () => {
+  db = await openDatabase(":memory:");
   store = new Store(db, false);
   tempRoot = join(
     tmpdir(),

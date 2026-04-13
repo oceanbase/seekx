@@ -18,9 +18,37 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
-// Dynamic import string prevents tsc from resolving "bun:sqlite" in non-Bun builds.
-const bunSqlite = "bun:sqlite";
-const { Database: BunDatabase } = await import(/* @vite-ignore */ bunSqlite as "bun:sqlite");
+type BunSqlite = typeof import("bun:sqlite");
+
+/**
+ * Lazily load `bun:sqlite` on first `openDatabase()` call.
+ *
+ * Top-level `await import("bun:sqlite")` breaks hosts that evaluate plugin
+ * TypeScript in a non-async module wrapper (e.g. some OpenClaw / Node loaders),
+ * producing `ReferenceError: await is not defined`.
+ */
+function loadBunSqliteOnce(): Promise<BunSqlite> {
+  return import(/* @vite-ignore */ "bun:sqlite" as "bun:sqlite").then((mod) => {
+    if (process.platform === "darwin") {
+      for (const p of getDarwinSQLiteCandidates()) {
+        try {
+          mod.Database.setCustomSQLite(p);
+          break;
+        } catch {
+          // try next candidate
+        }
+      }
+    }
+    return mod;
+  });
+}
+
+let bunSqlitePromise: Promise<BunSqlite> | null = null;
+
+function ensureBunSqlite(): Promise<BunSqlite> {
+  bunSqlitePromise ??= loadBunSqliteOnce();
+  return bunSqlitePromise;
+}
 
 type SpawnResult = { status: number | null; stdout: string };
 type SpawnRunner = (command: string, args: string[]) => SpawnResult;
@@ -61,23 +89,13 @@ export function getDarwinSQLiteCandidates(
   return [...new Set(candidates)];
 }
 
-if (process.platform === "darwin") {
-  for (const p of getDarwinSQLiteCandidates()) {
-    try {
-      BunDatabase.setCustomSQLite(p);
-      break;
-    } catch {
-      // try next candidate
-    }
-  }
-}
-
 export type Database = import("bun:sqlite").Database;
 export type Statement = ReturnType<Database["prepare"]>;
 
 /** Open (or create) a SQLite database at the given absolute path. */
-export function openDatabase(path: string): Database {
-  return new BunDatabase(path) as Database;
+export async function openDatabase(path: string): Promise<Database> {
+  const mod = await ensureBunSqlite();
+  return new mod.Database(path) as Database;
 }
 
 /**

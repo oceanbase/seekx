@@ -100,8 +100,8 @@ async function runCli(args: string[]): Promise<CliResult> {
   }
 }
 
-function openStore(): Store {
-  const db = openDatabase(dbPath);
+async function openStore(): Promise<Store> {
+  const db = await openDatabase(dbPath);
   return new Store(db, false);
 }
 
@@ -282,7 +282,7 @@ describe("CLI integration", () => {
     expect(statusResult.stdout).toContain("documents    2");
     expect(statusResult.stdout).toContain("sqlite-vec");
 
-    const store = openStore();
+    const store = await openStore();
     try {
       const doc = store.findDocumentByPath("docs", indexedIntroPath);
       expect(doc).not.toBeNull();

@@ -49,7 +49,7 @@ export class SeekxLifecycle {
     const dbDir = dirname(this.config.dbPath);
     if (!existsSync(dbDir)) mkdirSync(dbDir, { recursive: true });
 
-    this.db = openDatabase(this.config.dbPath);
+    this.db = await openDatabase(this.config.dbPath);
     const vecLoaded = await loadSqliteVec(this.db);
     this.store = new Store(this.db, vecLoaded);
 

@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { detectHomebrewSqlitePrefix, getDarwinSQLiteCandidates } from "../src/db.ts";
+import {
+  detectHomebrewSqlitePrefix,
+  getDarwinSQLiteCandidates,
+  openDatabase,
+} from "../src/db.ts";
 
 describe("SQLite runtime discovery", () => {
   test("detectHomebrewSqlitePrefix trims successful brew output", () => {
@@ -33,5 +37,26 @@ describe("SQLite runtime discovery", () => {
     const candidates = getDarwinSQLiteCandidates(undefined, "/custom/prefix");
 
     expect(candidates).toContain("/custom/prefix/lib/libsqlite3.dylib");
+  });
+
+  test("openDatabase lazily loads bun:sqlite and can open :memory:", async () => {
+    const db = await openDatabase(":memory:");
+    try {
+      const row = db.query("SELECT 1 AS n").get() as { n: number };
+      expect(row.n).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("parallel openDatabase calls share a single bun:sqlite load", async () => {
+    const [a, b] = await Promise.all([openDatabase(":memory:"), openDatabase(":memory:")]);
+    try {
+      expect(a.query("SELECT 2 AS n").get() as { n: number }).toEqual({ n: 2 });
+      expect(b.query("SELECT 3 AS n").get() as { n: number }).toEqual({ n: 3 });
+    } finally {
+      a.close();
+      b.close();
+    }
   });
 });

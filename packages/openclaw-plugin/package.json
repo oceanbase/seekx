@@ -15,7 +15,7 @@
     "test": "bun test test/"
   },
   "dependencies": {
-    "seekx-core": "^0.2.1"
+    "seekx-core": "^0.2.2"
   },
   "devDependencies": {
     "@types/bun": "latest",
