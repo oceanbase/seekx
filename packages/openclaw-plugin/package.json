@@ -17,9 +17,6 @@
   "dependencies": {
     "seekx-core": "^0.2.1"
   },
-  "peerDependencies": {
-    "openclaw": ">=2026.4.0"
-  },
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "^5.8.3"
