@@ -15,7 +15,7 @@
     "test": "bun test test/"
   },
   "dependencies": {
-    "seekx-core": "workspace:*"
+    "seekx-core": "^0.2.1"
   },
   "peerDependencies": {
     "openclaw": ">=2026.4.0"
