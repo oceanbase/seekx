@@ -4,7 +4,7 @@
   "workspaces": ["packages/*"],
   "scripts": {
     "test": "bun test --recursive packages/",
-    "typecheck": "tsc --noEmit -p packages/core && tsc --noEmit -p packages/cli",
+    "typecheck": "tsc --noEmit -p packages/core && tsc --noEmit -p packages/cli && tsc --noEmit -p packages/openclaw-plugin",
     "lint": "biome check packages/",
     "format": "biome format --write packages/"
   },

@@ -1,0 +1,70 @@
+{
+  "id": "seekx",
+  "name": "seekx",
+  "description": "Local-first hybrid search memory backend: BM25 + vector + rerank + CJK",
+  "version": "0.1.0",
+  "kind": "memory",
+  "skills": ["skills"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "dbPath": {
+        "type": "string"
+      },
+      "paths": {
+        "type": "array"
+      },
+      "apiKey": {
+        "type": "string"
+      },
+      "baseUrl": {
+        "type": "string"
+      },
+      "embedModel": {
+        "type": "string"
+      },
+      "rerankModel": {
+        "type": "string"
+      },
+      "expandModel": {
+        "type": "string"
+      },
+      "searchLimit": {
+        "type": "number"
+      },
+      "refreshIntervalMs": {
+        "type": "number"
+      },
+      "includeOpenClawMemory": {
+        "type": "boolean"
+      }
+    }
+  },
+  "uiHints": {
+    "apiKey": {
+      "label": "API key",
+      "sensitive": true,
+      "help": "API key for embedding/reranking/expansion. Inherits from ~/.seekx/config.yml if unset."
+    },
+    "baseUrl": {
+      "label": "API base URL",
+      "placeholder": "https://api.siliconflow.cn/v1",
+      "help": "OpenAI-compatible API base URL."
+    },
+    "embedModel": {
+      "label": "Embedding model",
+      "placeholder": "BAAI/bge-large-zh-v1.5"
+    },
+    "rerankModel": {
+      "label": "Reranking model",
+      "placeholder": "BAAI/bge-reranker-v2-m3",
+      "help": "Omit to disable reranking."
+    },
+    "expandModel": {
+      "label": "Query expansion model",
+      "placeholder": "Qwen/Qwen3-8B",
+      "help": "Omit to disable query expansion."
+    }
+  }
+}
