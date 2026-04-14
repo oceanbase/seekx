@@ -239,7 +239,8 @@ openclaw memory status
 
 ### Retrieving a full document
 
-Use the `path` field from search results with `memory_get`:
+Use the `path` field from search results with `memory_get`.
+For safety, the plugin only allows reads for files already indexed by seekx:
 
 ```
 memory_get("/Users/me/notes/people/alice.md")
@@ -338,10 +339,11 @@ must be restarted. Check for typos in `openclaw.json` and run
 
 ### No results from `memory_search`
 
-The initial index runs in the background after plugin startup. Wait 10–30
-seconds after the gateway starts, then retry. Run `openclaw memory status`
-to see `documents` and `chunks` counts — if both are 0 after 60 seconds,
-check gateway logs for indexing errors.
+The first search after a gateway restart may take longer because seekx waits
+for the startup index pass to finish before returning results. Run
+`openclaw memory status` to see `documents` and `chunks` counts — if both are
+still 0 after the initial pass completes, check gateway logs for indexing
+errors.
 
 ### Vector search not available
 

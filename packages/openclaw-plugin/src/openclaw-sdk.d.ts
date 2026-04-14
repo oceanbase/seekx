@@ -20,15 +20,25 @@ declare module "openclaw/plugin-sdk/plugin-entry" {
     collection?: string;
   }
 
+  /**
+   * Subset of MemoryProviderStatus returned by the real OpenClaw SDK.
+   * `status()` is called synchronously by OpenClaw's status scanner.
+   */
   export interface BackendStatus {
     backend: string;
+    provider?: string;
     dbPath?: string;
-    documents?: number;
+    /** Document (file) count — maps to MemoryProviderStatus.files. */
+    files?: number;
     chunks?: number;
+    /** Legacy alias kept for backward compat with older test assertions. */
+    documents?: number;
     embeddedChunks?: number;
     vectorSearchAvailable?: boolean;
     embedModel?: string | null;
     collections?: Array<{ name: string; path: string; docCount: number }>;
+    vector?: { enabled: boolean; available?: boolean };
+    custom?: Record<string, unknown>;
   }
 
   /**
@@ -38,7 +48,8 @@ declare module "openclaw/plugin-sdk/plugin-entry" {
   export interface MemorySearchManager {
     search(query: string, opts: MemorySearchOpts): Promise<MemorySearchResult[]>;
     readFile(path: string): Promise<string>;
-    status(): Promise<BackendStatus>;
+    /** Synchronous — called without await by OpenClaw's status scanner. */
+    status(): BackendStatus;
     probeEmbeddingAvailability(): Promise<boolean>;
     probeVectorAvailability(): Promise<boolean>;
   }
@@ -53,9 +64,13 @@ declare module "openclaw/plugin-sdk/plugin-entry" {
     resolveMemoryBackendConfig(raw: unknown): unknown;
   }
 
+  export interface PluginServiceContext {}
+
   export interface PluginService {
-    start?(): Promise<void> | void;
-    stop?(): Promise<void> | void;
+    /** Unique service identifier required by OpenClaw's service registry. */
+    id: string;
+    start?: (ctx: PluginServiceContext) => Promise<void> | void;
+    stop?: (ctx: PluginServiceContext) => Promise<void> | void;
   }
 
   export interface PluginLogger {

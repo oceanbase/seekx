@@ -4,9 +4,45 @@ import type {
   MemorySearchManager,
   MemorySearchResult,
   MemorySearchOpts,
-  BackendStatus,
 } from "openclaw/plugin-sdk/plugin-entry";
 import type { SeekxLifecycle } from "./lifecycle.ts";
+import { readPersistedSeekxStatusSync } from "./status-db.ts";
+
+type StatusSnapshot = {
+  totalDocuments: number;
+  totalChunks: number;
+  embeddedChunks: number;
+  vectorSearchAvailable: boolean;
+  embedModel: string | null;
+  collections: Array<{
+    name: string;
+    path: string;
+    docCount: number;
+  }>;
+};
+
+function buildStatusResponse(lc: SeekxLifecycle, snapshot: StatusSnapshot) {
+  return {
+    backend: "seekx" as const,
+    provider: "seekx",
+    dbPath: lc.config.dbPath,
+    files: snapshot.totalDocuments,
+    chunks: snapshot.totalChunks,
+    vector: {
+      enabled: snapshot.vectorSearchAvailable,
+      available: snapshot.vectorSearchAvailable,
+    },
+    custom: {
+      embeddedChunks: snapshot.embeddedChunks,
+      embedModel: snapshot.embedModel,
+      collections: snapshot.collections.map((c) => ({
+        name: c.name,
+        path: c.path,
+        docCount: c.docCount,
+      })),
+    },
+  };
+}
 
 /**
  * Build the MemorySearchManager that OpenClaw's runtime calls for
@@ -28,6 +64,7 @@ export function buildMemorySearchManager(lc: SeekxLifecycle): { manager: MemoryS
      *   - no rerank model → RRF-ranked order used directly
      */
     async search(query: string, opts: MemorySearchOpts): Promise<MemorySearchResult[]> {
+      await lc.waitForSearchReady();
       const limit = opts.limit ?? lc.config.searchLimit;
       const { results } = await hybridSearch(lc.store, lc.client, query, {
         limit,
@@ -55,38 +92,47 @@ export function buildMemorySearchManager(lc: SeekxLifecycle): { manager: MemoryS
      * Returns an empty string if the file has been deleted since indexing.
      */
     async readFile(path: string): Promise<string> {
+      const readablePath = await lc.resolveReadablePath(path);
+      if (!readablePath) return "";
       try {
-        return readFileSync(path, "utf-8");
+        return readFileSync(readablePath, "utf-8");
       } catch {
         return "";
       }
     },
 
-    async status(): Promise<BackendStatus> {
-      const s = lc.store.getStatus();
-      return {
-        backend: "seekx",
-        dbPath: lc.config.dbPath,
-        documents: s.totalDocuments,
-        chunks: s.totalChunks,
-        embeddedChunks: s.embeddedChunks,
-        vectorSearchAvailable: s.vectorSearchAvailable,
-        embedModel: s.embedModel,
-        collections: s.collections.map((c) => ({
-          name: c.name,
-          path: c.path,
-          docCount: c.docCount,
-        })),
-      };
+    /**
+     * status() is called SYNCHRONOUSLY by OpenClaw's status scanner.
+     *
+     * Field names follow MemoryProviderStatus (the real SDK type):
+     *   - files  → document count
+     *   - chunks → chunk count
+     *
+     * When the lifecycle has not yet completed start() (fresh process, status
+     * probe runs before the DB is open), fall back to a direct SQLite read of
+     * the persisted index state.
+     */
+    status() {
+      const snapshot = lc.store?.getStatus() ?? readPersistedSeekxStatusSync(lc.config.dbPath);
+      if (!snapshot) {
+        return {
+          backend: "seekx" as const,
+          provider: "seekx",
+          dbPath: lc.config.dbPath,
+          files: 0,
+          chunks: 0,
+        };
+      }
+      return buildStatusResponse(lc, snapshot);
     },
 
     async probeEmbeddingAvailability(): Promise<boolean> {
-      if (!lc.client) return false;
-      const { embed } = lc.config;
-      return Boolean(embed.baseUrl && embed.model && embed.apiKey);
+      await lc.start();
+      return lc.client !== null;
     },
 
     async probeVectorAvailability(): Promise<boolean> {
+      await lc.start();
       return lc.store.getStatus().vectorSearchAvailable;
     },
   };

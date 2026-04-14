@@ -1,6 +1,6 @@
 import { mkdirSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import {
   openDatabase,
   loadSqliteVec,
@@ -31,7 +31,12 @@ export class SeekxLifecycle {
   client: SeekxClient | null = null;
   private watcher: Watcher | null = null;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
-  private started = false;
+  private startPromise: Promise<void> | null = null;
+  private stopPromise: Promise<void> | null = null;
+  private initialIndexPromise: Promise<void> = Promise.resolve();
+  private indexQueue: Promise<void> = Promise.resolve();
+  private stopping = false;
+  private readonly shutdown = () => void this.stop();
 
   constructor(config: SeekxPluginConfig) {
     this.config = config;
@@ -42,9 +47,36 @@ export class SeekxLifecycle {
    * and start the file watcher. Idempotent — safe to call multiple times.
    */
   async start(): Promise<void> {
-    if (this.started) return;
-    this.started = true;
+    if (this.startPromise) return this.startPromise;
+    this.stopping = false;
+    this.stopPromise = null;
+    this.startPromise = this._start();
+    return this.startPromise;
+  }
 
+  async waitForSearchReady(): Promise<void> {
+    await this.start();
+    await this.initialIndexPromise;
+  }
+
+  async resolveReadablePath(path: string): Promise<string | null> {
+    await this.start();
+    const normalizedPath = resolve(path);
+    for (const collection of this.store.listCollections()) {
+      if (this.store.findDocumentByPath(collection.name, normalizedPath)) {
+        return normalizedPath;
+      }
+    }
+    return null;
+  }
+
+  /** Queue a full incremental index pass and wait for completion. */
+  async _runFullIndex(): Promise<void> {
+    await this.start();
+    await this.queueFullIndex();
+  }
+
+  private async _start(): Promise<void> {
     // Ensure the database directory exists before opening.
     const dbDir = dirname(this.config.dbPath);
     if (!existsSync(dbDir)) mkdirSync(dbDir, { recursive: true });
@@ -90,44 +122,48 @@ export class SeekxLifecycle {
       });
     }
 
-    // Initial indexing runs in the background — does not block plugin startup.
-    void this._runFullIndex();
-
-    // File watcher: covers all registered collections. syncIntervalMs lets
-    // the watcher pick up collections added by `seekx add` in another process
-    // without requiring a gateway restart.
     const collectionWatches: CollectionWatch[] = this.store
       .listCollections()
       .map((c) => ({ collection: c.name, rootPath: c.path }));
 
     this.watcher = new Watcher(this.store, this.client, collectionWatches, {
       debounceMs: 1000,
-      syncIntervalMs: 30_000,
     });
     this.watcher.start();
 
-    // Periodic full re-index — safety net for missed watcher events
-    // (network drives, Docker bind mounts, etc.).
+    // The plugin keeps its own index database by default, so collection sync
+    // via a separate seekx CLI process is not a supported workflow.
     if (this.config.refreshIntervalMs > 0) {
-      this.refreshTimer = setInterval(
-        () => void this._runFullIndex(),
-        this.config.refreshIntervalMs,
-      );
+      this.refreshTimer = setInterval(() => {
+        void this.queueFullIndex();
+      }, this.config.refreshIntervalMs);
     }
 
-    // Ensure clean shutdown on process exit even if registerService() is
-    // not wired up by the host (e.g. during testing).
-    const shutdown = () => void this.stop();
-    process.once("SIGTERM", shutdown);
-    process.once("exit", shutdown);
+    process.once("SIGTERM", this.shutdown);
+    process.once("exit", this.shutdown);
+
+    // Startup stays non-blocking for plugin activation, but searches wait for
+    // this initial pass so they do not incorrectly return an empty result set
+    // before the first index has been built.
+    this.initialIndexPromise = this.queueFullIndex();
   }
 
-  /** Run incremental indexing across all registered collections. */
-  async _runFullIndex(): Promise<void> {
+  private queueFullIndex(): Promise<void> {
+    if (this.stopping) return Promise.resolve();
+    const run = this.indexQueue.then(async () => {
+      if (this.stopping) return;
+      await this.runFullIndexNow();
+    });
+    this.indexQueue = run.catch(() => {});
+    return run;
+  }
+
+  /** Run incremental indexing across all registered collections immediately. */
+  private async runFullIndexNow(): Promise<void> {
     const collections = this.store.listCollections();
     for (const col of collections) {
+      if (this.stopping) break;
       try {
-        // Actual signature: (store, client, collection, rootPath, pattern, ignore, onProgress?)
         await indexDirectory(
           this.store,
           this.client,
@@ -143,12 +179,25 @@ export class SeekxLifecycle {
   }
 
   async stop(): Promise<void> {
-    if (!this.started) return;
-    if (this.refreshTimer !== null) {
-      clearInterval(this.refreshTimer);
-      this.refreshTimer = null;
-    }
-    await this.watcher?.stop();
-    this.store?.close();
+    if (this.stopPromise) return this.stopPromise;
+    if (!this.startPromise) return;
+
+    this.stopping = true;
+    this.stopPromise = (async () => {
+      if (this.refreshTimer !== null) {
+        clearInterval(this.refreshTimer);
+        this.refreshTimer = null;
+      }
+      await this.watcher?.stop();
+      this.watcher = null;
+      await this.indexQueue.catch(() => {});
+      this.store?.close();
+      this.client = null;
+      process.off("SIGTERM", this.shutdown);
+      process.off("exit", this.shutdown);
+      this.startPromise = null;
+    })();
+
+    return this.stopPromise;
   }
 }

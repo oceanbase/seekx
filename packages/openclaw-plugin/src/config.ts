@@ -11,7 +11,7 @@ export interface ExtraPath {
 /** Raw shape of what OpenClaw puts in pluginConfig. */
 export interface RawPluginConfig {
   dbPath?: string;
-  paths?: ExtraPath[];
+  paths?: unknown;
   apiKey?: string;
   baseUrl?: string;
   embedModel?: string;
@@ -31,6 +31,41 @@ export interface SeekxPluginConfig {
   searchLimit: number;
   refreshIntervalMs: number;
   includeOpenClawMemory: boolean;
+}
+
+function normalizeExtraPaths(paths: unknown): ExtraPath[] {
+  if (paths == null) return [];
+  if (!Array.isArray(paths)) {
+    throw new Error("Invalid plugin config: paths must be an array of { name, path, pattern? }");
+  }
+
+  return paths.map((entry, index) => {
+    if (!entry || typeof entry !== "object") {
+      throw new Error(`Invalid plugin config: paths[${index}] must be an object`);
+    }
+
+    const { name, path, pattern } = entry as {
+      name?: unknown;
+      path?: unknown;
+      pattern?: unknown;
+    };
+
+    if (typeof name !== "string" || name.trim() === "") {
+      throw new Error(`Invalid plugin config: paths[${index}].name must be a non-empty string`);
+    }
+    if (typeof path !== "string" || path.trim() === "") {
+      throw new Error(`Invalid plugin config: paths[${index}].path must be a non-empty string`);
+    }
+    if (pattern != null && typeof pattern !== "string") {
+      throw new Error(`Invalid plugin config: paths[${index}].pattern must be a string`);
+    }
+
+    return {
+      name: name.trim(),
+      path: path.trim(),
+      ...(pattern ? { pattern } : {}),
+    };
+  });
 }
 
 /**
@@ -72,7 +107,7 @@ export function resolvePluginConfig(
 
   return {
     dbPath: raw.dbPath ?? join(homedir(), ".seekx", "openclaw.db"),
-    extraPaths: raw.paths ?? [],
+    extraPaths: normalizeExtraPaths(raw.paths),
     embed,
     rerank,
     expand,

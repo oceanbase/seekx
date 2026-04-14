@@ -171,6 +171,21 @@ describe("resolvePluginConfig — plugin config overrides base config", () => {
     expect(cfg.extraPaths).toEqual(paths);
   });
 
+  test("invalid path entries fail fast with a clear error", () => {
+    expect(() => resolvePluginConfig({ paths: ["~/notes"] }, noBase)).toThrow(
+      "Invalid plugin config: paths[0] must be an object",
+    );
+  });
+
+  test("path entries require name and path strings", () => {
+    expect(() => resolvePluginConfig({ paths: [{ name: "", path: "/notes" }] }, noBase)).toThrow(
+      "Invalid plugin config: paths[0].name must be a non-empty string",
+    );
+    expect(() => resolvePluginConfig({ paths: [{ name: "notes" }] }, noBase)).toThrow(
+      "Invalid plugin config: paths[0].path must be a non-empty string",
+    );
+  });
+
   test("full plugin config with no base: all fields from plugin", () => {
     const cfg = resolvePluginConfig(
       {

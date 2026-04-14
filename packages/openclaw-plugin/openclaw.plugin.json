@@ -13,7 +13,23 @@
         "type": "string"
       },
       "paths": {
-        "type": "array"
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "path"],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "pattern": {
+              "type": "string"
+            }
+          }
+        }
       },
       "apiKey": {
         "type": "string"

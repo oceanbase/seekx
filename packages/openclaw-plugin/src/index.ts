@@ -27,8 +27,10 @@ export default definePluginEntry({
 
     // Register a background service so OpenClaw calls stop() on shutdown,
     // giving the watcher and database a chance to close cleanly.
+    // id is required by the real OpenClawPluginService type.
     api.registerService({
+      id: "seekx-lifecycle",
       stop: () => lifecycle.stop(),
-    });
+    } as Parameters<typeof api.registerService>[0]);
   },
 });

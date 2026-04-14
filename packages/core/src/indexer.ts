@@ -219,20 +219,48 @@ export async function indexDirectory(
 
   onProgress?.({ phase: "scan_start", rootPath: absRoot });
 
-  // Use Bun's built-in Glob which is available in all Bun versions.
-  const { Glob } = await import("bun");
-  const globber = new Glob(pattern);
-  for await (const entry of globber.scan({ cwd: absRoot, absolute: false, followSymlinks: true })) {
-    const absPath = resolve(absRoot, entry);
-    if (!isIgnored(absPath, absRoot, ignore)) {
-      files.push(absPath);
-      onProgress?.({
-        phase: "scan_progress",
-        rootPath: absRoot,
-        discovered: files.length,
-        filePath: absPath,
-        relativePath: entry,
-      });
+  // Use Bun's built-in Glob when running under Bun; fall back to Node.js
+  // fs.glob (stable since Node 22) when loaded by the openclaw gateway.
+  const isBun = typeof (process.versions as { bun?: string }).bun === "string";
+  if (isBun) {
+    const { Glob } = await import("bun");
+    const globber = new Glob(pattern);
+    for await (const entry of globber.scan({
+      cwd: absRoot,
+      absolute: false,
+      followSymlinks: true,
+    })) {
+      const absPath = resolve(absRoot, entry);
+      if (!isIgnored(absPath, absRoot, ignore)) {
+        files.push(absPath);
+        onProgress?.({
+          phase: "scan_progress",
+          rootPath: absRoot,
+          discovered: files.length,
+          filePath: absPath,
+          relativePath: entry,
+        });
+      }
+    }
+  } else {
+    // Node.js path: fs.glob is stable in Node 22+.
+    const { glob } = await import("node:fs/promises");
+    for await (const entry of glob(pattern, {
+      cwd: absRoot,
+      withFileTypes: false,
+    })) {
+      const rel = String(entry);
+      const absPath = resolve(absRoot, rel);
+      if (!isIgnored(absPath, absRoot, ignore)) {
+        files.push(absPath);
+        onProgress?.({
+          phase: "scan_progress",
+          rootPath: absRoot,
+          discovered: files.length,
+          filePath: absPath,
+          relativePath: rel,
+        });
+      }
     }
   }
 
