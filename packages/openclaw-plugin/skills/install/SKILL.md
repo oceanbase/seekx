@@ -6,7 +6,7 @@
 > is installed.
 >
 > How to invoke: tell your agent:
-> "Fetch and follow this skill: https://raw.githubusercontent.com/seekx/seekx/main/packages/openclaw-plugin/skills/install/SKILL.md"
+> "Fetch and follow this skill: https://raw.githubusercontent.com/oceanbase/seekx/master/packages/openclaw-plugin/skills/install/SKILL.md"
 
 ---
 

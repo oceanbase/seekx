@@ -60,7 +60,7 @@ Tell your agent (Cursor, Claude Desktop, or any capable agent with file-system a
 
 ```
 Fetch and follow this skill:
-https://raw.githubusercontent.com/oceanbase/seekx/main/packages/openclaw-plugin/skills/install/SKILL.md
+https://raw.githubusercontent.com/oceanbase/seekx/master/packages/openclaw-plugin/skills/install/SKILL.md
 ```
 
 The agent will verify OpenClaw is installed, install the plugin, ask you four targeted questions (provider, API key, query expansion, extra directories), write the config, restart the gateway, and confirm the setup works — all without manual steps.
@@ -399,6 +399,6 @@ The file watcher picks up changes within ~1 second under normal conditions. Netw
 
 - [seekx CLI](https://www.npmjs.com/package/seekx) — use seekx as a standalone search tool or MCP server
 - [seekx-core](https://www.npmjs.com/package/seekx-core) — the search engine library used by this plugin
-- [Full user guide](https://github.com/oceanbase/seekx/blob/main/docs/openclaw-plugin-user-guide.md) — detailed reference with design notes
-- [Design document](https://github.com/oceanbase/seekx/blob/main/docs/openclaw-plugin-design.md) — architecture, data flow, implementation notes
+- [Full user guide](https://github.com/oceanbase/seekx/blob/master/docs/openclaw-plugin-user-guide.md) — detailed reference with design notes
+- [Design document](https://github.com/oceanbase/seekx/blob/master/docs/openclaw-plugin-design.md) — architecture, data flow, implementation notes
 - [Install skill](./skills/install/SKILL.md) — agent-executable step-by-step install guide
