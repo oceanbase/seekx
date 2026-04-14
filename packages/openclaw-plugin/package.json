@@ -5,7 +5,7 @@
   "type": "module",
   "main": "./src/index.ts",
   "exports": { ".": "./src/index.ts" },
-  "files": ["src", "skills", "openclaw.plugin.json"],
+  "files": ["src", "skills", "openclaw.plugin.json", "README.md"],
   "openclaw": {
     "extensions": ["./src/index.ts"],
     "install": { "minHostVersion": ">=2026.4.0" }
