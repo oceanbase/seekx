@@ -44,6 +44,15 @@ function makeConfig(overrides: Partial<SeekxPluginConfig> = {}): SeekxPluginConf
     searchLimit: 6,
     refreshIntervalMs: 0, // disable periodic re-index in tests
     includeOpenClawMemory: false,
+    autoRecall: {
+      enabled: true,
+      maxResults: 3,
+      minScore: 0.2,
+      maxChars: 1200,
+      minQueryLength: 4,
+    },
+    citations: "auto",
+    searchTimeoutMs: 8000,
     ...overrides,
   };
 }

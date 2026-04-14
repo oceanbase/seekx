@@ -85,6 +85,32 @@ already configured:
 }
 ```
 
+Recommended minimal config with `autoRecall` enabled explicitly:
+
+```json5
+{
+  "plugins": {
+    "slots": {
+      "memory": "seekx"
+    },
+    "entries": {
+      "seekx": {
+        "enabled": true,
+        "config": {
+          "autoRecall": {
+            "enabled": true,
+            "maxResults": 3,
+            "minScore": 0.2,
+            "maxChars": 1200,
+            "minQueryLength": 4
+          }
+        }
+      }
+    }
+  }
+}
+```
+
 For a standalone setup (no existing `~/.seekx/config.yml`), provide API
 credentials explicitly:
 
@@ -102,7 +128,16 @@ credentials explicitly:
           "baseUrl":      "https://api.siliconflow.cn/v1",
           "embedModel":   "BAAI/bge-large-zh-v1.5",
           "rerankModel":  "BAAI/bge-reranker-v2-m3",
-          "expandModel":  "Qwen/Qwen3-8B"
+          "expandModel":  "Qwen/Qwen3-8B",
+          "citations":    "auto",
+          "searchTimeoutMs": 8000,
+          "autoRecall": {
+            "enabled": true,
+            "maxResults": 3,
+            "minScore": 0.2,
+            "maxChars": 1200,
+            "minQueryLength": 4
+          }
         }
       }
     }
@@ -166,6 +201,13 @@ inherit from `~/.seekx/config.yml` when that file exists.
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `searchLimit` | `number` | `6` | Maximum number of results returned per `memory_search` call. Higher values give more context at the cost of prompt size. Recommended range: 4–12. |
+| `citations` | `string` | `"auto"` | Controls `Source: path#line` citation footer on search snippets. `"auto"` or `"on"` appends the footer; `"off"` omits it. Matches QMD's `memory.citations` behavior. |
+| `searchTimeoutMs` | `number` | `8000` | Maximum time (ms) for a single `memory_search` call. Protects against runaway searches when rerank/expand endpoints are slow. Set to `0` to disable the timeout. |
+| `autoRecall.enabled` | `boolean` | `true` | Run a proactive seekx search during `before_prompt_build` for recall-style user prompts such as prior decisions, preferences, or earlier notes. |
+| `autoRecall.maxResults` | `number` | `3` | Maximum number of matched memory items injected into the prompt. Keep this small to avoid crowding out the main conversation. |
+| `autoRecall.minScore` | `number` | `0.2` | Minimum result score required for prompt injection. Raise this if auto-recall is too eager; lower it if recall misses useful items. |
+| `autoRecall.maxChars` | `number` | `1200` | Character budget for the injected recall block. Once the budget is reached, lower-ranked matches are dropped. |
+| `autoRecall.minQueryLength` | `number` | `4` | Ignore very short prompts for auto-recall to avoid noisy searches on low-signal inputs. |
 
 ### Indexing and watching
 
@@ -298,6 +340,7 @@ is unavailable, the pipeline continues with whatever is available:
 | `rerankModel` not set | RRF-ranked results used directly; no cross-encoder reranking |
 | `expandModel` not set | Only the original query runs; no expanded variants |
 | All of the above | Pure BM25 full-text search; still CJK-aware via Jieba |
+| Search exceeds `searchTimeoutMs` | `SearchTimeoutError` is thrown; OpenClaw reports the timeout to the agent. Increase the timeout or set to `0` to disable. |
 
 BM25-only mode works immediately with no API key and is already better than
 the trigram-based builtin backend for most queries.
@@ -382,6 +425,18 @@ resolved.
   (default: `**/*.{md,txt,markdown}`).
 - Non-existent directories at plugin startup are silently skipped. Create
   the directory and restart the gateway.
+
+### Search times out
+
+If gateway logs show `SearchTimeoutError`, the search pipeline took longer
+than `searchTimeoutMs` (default 8000 ms). Common causes:
+
+- Slow reranking or expansion endpoints (high latency API provider)
+- Very large index with no vector support (BM25 scanning many documents)
+- First search after boot while initial indexing is still in progress
+
+Increase `searchTimeoutMs` in the plugin config, or set it to `0` to disable
+the timeout entirely.
 
 ### Memory files changed but search results are stale
 

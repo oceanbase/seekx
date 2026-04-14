@@ -178,6 +178,13 @@ Using the answers collected above, assemble the `pluginConfig` object.
   "embedModel":   "BAAI/bge-large-zh-v1.5",
   "rerankModel":  "BAAI/bge-reranker-v2-m3",
   "expandModel":  "<EXPAND_MODEL or omit>",
+  "autoRecall": {
+    "enabled": true,
+    "maxResults": 3,
+    "minScore": 0.2,
+    "maxChars": 1200,
+    "minQueryLength": 4
+  },
   "paths":        []
 }
 ```
@@ -190,6 +197,13 @@ Using the answers collected above, assemble the `pluginConfig` object.
   "baseUrl":     "https://api.openai.com/v1",
   "embedModel":  "text-embedding-3-small",
   "expandModel": "<EXPAND_MODEL or omit>",
+  "autoRecall": {
+    "enabled": true,
+    "maxResults": 3,
+    "minScore": 0.2,
+    "maxChars": 1200,
+    "minQueryLength": 4
+  },
   "paths":       []
 }
 ```
@@ -204,6 +218,13 @@ Using the answers collected above, assemble the `pluginConfig` object.
   "baseUrl":    "http://localhost:11434/v1",
   "embedModel": "nomic-embed-text",
   "expandModel": "<EXPAND_MODEL or omit>",
+  "autoRecall": {
+    "enabled": true,
+    "maxResults": 3,
+    "minScore": 0.2,
+    "maxChars": 1200,
+    "minQueryLength": 4
+  },
   "paths":      []
 }
 ```
@@ -217,6 +238,13 @@ Using the answers collected above, assemble the `pluginConfig` object.
   "embedModel":  "<ask user>",
   "rerankModel": "<ask user, or omit>",
   "expandModel": "<EXPAND_MODEL or omit>",
+  "autoRecall": {
+    "enabled": true,
+    "maxResults": 3,
+    "minScore": 0.2,
+    "maxChars": 1200,
+    "minQueryLength": 4
+  },
   "paths":       []
 }
 ```
@@ -254,7 +282,14 @@ Merge the following into the config (do not overwrite unrelated fields):
       "seekx": {
         "enabled": true,
         "config": {
-          // paste the pluginConfig object assembled in Step 4
+          // paste the pluginConfig object assembled in Step 4, including:
+          // "autoRecall": {
+          //   "enabled": true,
+          //   "maxResults": 3,
+          //   "minScore": 0.2,
+          //   "maxChars": 1200,
+          //   "minQueryLength": 4
+          // }
         }
       }
     }

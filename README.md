@@ -160,6 +160,7 @@ Query
 | `seekx watch` | Start the realtime file watcher |
 | `seekx status` | Show index stats and health |
 | `seekx config` | View or update configuration |
+| `seekx mcp` | Start MCP server (stdio) for AI agents |
 
 All commands support `--json` for machine-readable output.
 
@@ -227,6 +228,56 @@ export SEEKX_SQLITE_PATH="$(brew --prefix sqlite)/lib/libsqlite3.dylib"
 
 `seekx onboard` will check this and guide you.
 
+## OpenClaw integration
+
+seekx can replace [OpenClaw](https://openclaw.ai)'s built-in memory backend.
+Install the [`@seekx/openclaw`](packages/openclaw-plugin/) plugin and every
+`memory_search` / `memory_get` call is transparently routed through seekx's
+hybrid pipeline — the agent needs no behavior changes.
+
+```json5
+// ~/.openclaw/openclaw.json
+{
+  "plugins": {
+    "slots": { "memory": "seekx" },
+    "entries": { "seekx": { "enabled": true } }
+  }
+}
+```
+
+Features beyond OpenClaw's builtin backend:
+
+- Hybrid BM25 + vector search with cross-encoder reranking
+- CJK-aware full-text search via Jieba
+- Proactive auto-recall: injects relevant memory into prompts before the agent even searches
+- `Source: path#line` citation footers on search results (QMD-compatible)
+- Search timeout protection (default 8 s)
+- Graceful degradation — BM25-only works with no API key
+
+See the [plugin README](packages/openclaw-plugin/README.md) for setup,
+configuration, and provider examples.
+
+## MCP server
+
+Expose your indexed knowledge base to AI agents (Claude Desktop, Cursor, etc.)
+via the [Model Context Protocol](https://modelcontextprotocol.io):
+
+```bash
+seekx mcp    # starts an MCP server over stdio
+```
+
+The server exposes four tools: `search`, `get`, `list`, `status`.
+
+## Monorepo structure
+
+```
+packages/
+  core/              seekx-core: engine library (SQLite, search, indexer, watcher)
+  cli/               seekx: CLI + MCP server
+  openclaw-plugin/   @seekx/openclaw: OpenClaw memory backend plugin
+bench/               Retrieval benchmarks (SciFact, MIRACL-zh)
+```
+
 ## Development
 
 ```bash
@@ -238,7 +289,9 @@ bun run format                   # biome format --write
 
 ## Roadmap
 
-- [ ] MCP server — expose your knowledge base to AI agents (Claude Desktop, Cursor, etc.)
+- [x] MCP server — expose your knowledge base to AI agents (Claude Desktop, Cursor, etc.)
+- [x] OpenClaw plugin — replace OpenClaw's memory backend with seekx
+- [ ] Session transcript indexing for the OpenClaw plugin
 - [ ] PDF and DOCX support
 - [ ] Multi-tenancy (isolated indexes per user/workspace)
 - [ ] Web UI for search and collection management
