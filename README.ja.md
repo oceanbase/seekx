@@ -23,7 +23,7 @@
 
 ---
 
-一度インデックスすれば、何でも見つかる。seekx はローカル文書にハイブリッド検索をもたらします — ファイルとコマンド一つだけで。
+一度インデックスすれば、何でも見つかる。seekx はローカル文書に **SOTA** のハイブリッド検索をもたらします — ファイルとコマンド一つだけで、トークンコストを約 90% 削減できます。
 
 ```
 seekx add ~/notes
@@ -49,13 +49,16 @@ seekx は理解します。
 
 ## 機能
 
+- **ハイブリッド検索** — BM25 + ベクトル + Reciprocal Rank Fusion（RRF）をそのまま利用
 - **クロスエンコーダによる再ランキング** — 任意の rerank API で精度を向上
 - **クエリ拡張** — LLM による自動クエリ書き換えでリコール向上
 - **HyDE** — Hypothetical Document Embeddings による意味検索の強化
 - **コンテキストを意識したチャンク分割** — Markdown は見出し単位、プレーンテキストは段落単位
 - **増分インデックス** — SHA-1 コンテンツハッシュで未変更ファイルをスキップ、変更分だけ再埋め込み
+- **CJK トークナイズ** — 中国語・日本語・韓国語向けの Jieba ベース分割
+- **MCP サーバー** — [Model Context Protocol](https://modelcontextprotocol.io) 経由でナレッジベースを AI エージェントに公開
+- **OpenClaw プラグイン** — `memory-core` を置き換えるドロップインのメモリバックエンド。seekx のハイブリッドパイプラインを利用
 - **JSON 出力** — すべてのコマンドが `--json` に対応（スクリプト・パイプ向け）
-- **OpenClaw メモリバックエンド** — `memory-core` をそのまま置き換えるプラグイン。seekx のハイブリッド検索パイプラインを OpenClaw に接続します
 
 ## クイックスタート
 
@@ -66,7 +69,7 @@ seekx は理解します。
 
 ### インストール
 
-**npm から（推奨）** — CLI とライブラリは npm に公開されています：[`seekx`](https://www.npmjs.com/package/seekx)（CLI）は [`seekx-core`](https://www.npmjs.com/package/seekx-core) に依存。CLI をグローバルにインストールすれば、`seekx-core` は自動で取得されます。
+**npm から（推奨）** — CLI をグローバルにインストールすると、npm が [`seekx-core`](https://www.npmjs.com/package/seekx-core) を自動取得します。
 
 ```bash
 npm install -g seekx
@@ -145,29 +148,6 @@ seekx watch          # インデックス済みコレクションをすべて監
 4. すべての結果リストを **Reciprocal Rank Fusion**（RRF）でマージします。
 5. **再ランキング**（任意）：クロスエンコーダが融合後の候補を再スコアし、位置を考慮したブレンディングを行います。
 
-## AI エージェントとの連携
-
-[`seekx-openclaw`](https://www.npmjs.com/package/seekx-openclaw) は、OpenClaw 内蔵の `memory-core` バックエンドをそのまま置き換えるプラグインです。インストールすると、エージェントの `memory_search` / `memory_get` 呼び出しが自動的に seekx のハイブリッド検索パイプラインを通るようになります。エージェントのプロンプトを変更する必要はありません。
-
-```bash
-openclaw plugins install seekx-openclaw
-```
-
-`~/.openclaw/openclaw.json` でプラグインを設定します：
-
-```json
-{
-  "plugins": {
-    "slots":   { "memory": "seekx" },
-    "entries": { "seekx": { "enabled": true } }
-  }
-}
-```
-
-seekx CLI を既に使用している場合、プラグインは `~/.seekx/config.yml` の API 認証情報を自動的に継承するため、重複した設定は不要です。詳細は[完全セットアップガイド](packages/openclaw-plugin/README.md)をご覧ください。
-
----
-
 ## CLI リファレンス
 
 | コマンド | 説明 |
@@ -184,6 +164,7 @@ seekx CLI を既に使用している場合、プラグインは `~/.seekx/confi
 | `seekx watch` | リアルタイムファイルウォッチャー起動 |
 | `seekx status` | インデックス統計とヘルス表示 |
 | `seekx config` | 設定の表示・更新 |
+| `seekx mcp` | MCP サーバー起動（stdio）— AI エージェント向け |
 
 すべてのコマンドが `--json` で機械可読出力に対応しています。
 
@@ -251,6 +232,62 @@ export SEEKX_SQLITE_PATH="$(brew --prefix sqlite)/lib/libsqlite3.dylib"
 
 `seekx onboard` がこれを確認し案内します。
 
+## MCP サーバー
+
+[Model Context Protocol](https://modelcontextprotocol.io) により、インデックス済みナレッジベースを AI エージェント（Claude Desktop、Cursor など）に公開します：
+
+```bash
+seekx mcp    # stdio 上で MCP サーバーを起動
+```
+
+サーバーは 4 つのツールを公開します：`search`、`get`、`list`、`status`。
+
+## OpenClaw 連携
+
+[`seekx-openclaw`](https://www.npmjs.com/package/seekx-openclaw) は、[OpenClaw](https://openclaw.ai) 内蔵の `memory-core` バックエンドを seekx のハイブリッド検索パイプラインに置き換えるドロップインプラグインです。インストール後、`memory_search` と `memory_get` は透過的に BM25 + ベクトル + 再ランキングを経由します — エージェントやプロンプトの変更は不要です。
+
+```bash
+openclaw plugins install seekx-openclaw
+```
+
+`~/.openclaw/openclaw.json` でプラグインを設定します：
+
+```json
+{
+  "plugins": {
+    "slots":   { "memory": "seekx" },
+    "entries": { "seekx": { "enabled": true } }
+  }
+}
+```
+
+**内蔵バックエンドに加えて得られるもの：**
+
+- クロスエンコーダ再ランキング付き BM25 + ベクトル検索
+- Jieba による CJK 対応全文検索
+- プロアクティブ自動想起：エージェントが検索する前に関連メモリをプロンプトへ注入
+- 検索結果の `Source: path#line` 脚注（QMD 互換）
+- 検索タイムアウト保護（既定 8 秒）
+- グレースフルデグラデーション — API キーなしでも BM25 のみで動作
+
+`~/.seekx/config.yml` が存在する場合、プラグインはそこから API 認証情報を継承するため重複設定は不要です。プロバイダー設定、追加ディレクトリ、トラブルシューティングは [プラグイン README](packages/openclaw-plugin/README.md) を参照してください。
+
+## パッケージ
+
+```
+packages/
+  core/              seekx-core — エンジンライブラリ（SQLite、検索、インデクサ、ウォッチャー）
+  cli/               seekx — CLI + MCP サーバー
+  openclaw-plugin/   seekx-openclaw — OpenClaw メモリバックエンドプラグイン
+bench/               検索ベンチマーク（SciFact、MIRACL-zh）
+```
+
+| パッケージ | バージョン | 説明 |
+|---|---|---|
+| [`seekx`](https://www.npmjs.com/package/seekx) | [![](https://img.shields.io/npm/v/seekx)](https://www.npmjs.com/package/seekx) | CLI — 13 コマンド、MCP サーバー、リアルタイムウォッチャー |
+| [`seekx-core`](https://www.npmjs.com/package/seekx-core) | [![](https://img.shields.io/npm/v/seekx-core)](https://www.npmjs.com/package/seekx-core) | 検索エンジンライブラリ（Node / Bun 対応） |
+| [`seekx-openclaw`](https://www.npmjs.com/package/seekx-openclaw) | [![](https://img.shields.io/npm/v/seekx-openclaw)](https://www.npmjs.com/package/seekx-openclaw) | OpenClaw メモリバックエンドプラグイン |
+
 ## 開発
 
 ```bash
@@ -262,20 +299,13 @@ bun run format                   # biome format --write
 
 ## ロードマップ
 
+- [x] MCP サーバー — ナレッジベースを AI エージェント（Claude Desktop、Cursor など）に公開
 - [x] OpenClaw メモリバックエンドプラグイン（[`seekx-openclaw`](https://www.npmjs.com/package/seekx-openclaw)）
-- [ ] MCP サーバー — ナレッジベースを AI エージェント（Claude Desktop、Cursor など）に公開
+- [ ] OpenClaw プラグインのセッション書き起こしインデックス
 - [ ] PDF / DOCX 対応
 - [ ] マルチテナンシー（ユーザー／ワークスペースごとの分離インデックス）
 - [ ] 検索とコレクション管理の Web UI
 - [ ] カスタムファイルパーサー用プラグインシステム
-
-## パッケージ
-
-| パッケージ | バージョン | 説明 |
-|---|---|---|
-| [`seekx`](https://www.npmjs.com/package/seekx) | [![](https://img.shields.io/npm/v/seekx)](https://www.npmjs.com/package/seekx) | CLI — 13 コマンド、MCP サーバー、リアルタイムウォッチャー |
-| [`seekx-core`](https://www.npmjs.com/package/seekx-core) | [![](https://img.shields.io/npm/v/seekx-core)](https://www.npmjs.com/package/seekx-core) | 検索エンジンライブラリ（Node / Bun 対応） |
-| [`seekx-openclaw`](https://www.npmjs.com/package/seekx-openclaw) | [![](https://img.shields.io/npm/v/seekx-openclaw)](https://www.npmjs.com/package/seekx-openclaw) | OpenClaw メモリバックエンドプラグイン |
 
 ## ライセンス
 

@@ -23,7 +23,7 @@
 
 ---
 
-索引一次，随处可搜。seekx 为本地文档带来混合检索——只需你的文件和一条命令。
+索引一次，随处可搜。seekx 将 **SOTA（最先进）** 的混合检索带到你的本地文档——只需你的文件和一条命令，可将 token 成本降低约 90%。
 
 ```
 seekx add ~/notes
@@ -49,13 +49,16 @@ seekx 可以。
 
 ## 功能特性
 
+- **混合检索** — BM25 + 向量 + 倒数排名融合（RRF），开箱即用
 - **Cross-encoder 重排序** — 可选的重排序 API，提升结果精度
 - **查询扩展** — 通过 LLM 自动改写查询，提升召回
 - **HyDE** — 假设文档嵌入（Hypothetical Document Embeddings），增强语义检索
 - **内容感知分块** — Markdown 按标题切分；纯文本按段落切分
 - **增量索引** — SHA-1 内容哈希跳过未变文件；仅对变更部分重新嵌入
+- **CJK 分词** — 基于 Jieba 的中文、日文、韩文分词
+- **MCP 服务器** — 通过 [Model Context Protocol](https://modelcontextprotocol.io) 将知识库暴露给 AI 智能体
+- **OpenClaw 插件** — 可替换 `memory-core` 的即插即用记忆后端，接入 seekx 混合检索管道
 - **JSON 输出** — 每条命令均支持 `--json`，便于脚本与管道
-- **OpenClaw 记忆后端** — 可一键替换 `memory-core` 的插件，将 seekx 混合检索管道接入 OpenClaw
 
 ## 快速开始
 
@@ -66,7 +69,7 @@ seekx 可以。
 
 ### 安装
 
-**通过 npm（推荐）** — CLI 与库发布在 npm：[`seekx`](https://www.npmjs.com/package/seekx)（CLI）依赖 [`seekx-core`](https://www.npmjs.com/package/seekx-core)。全局安装 CLI 即可；npm 会自动拉取 `seekx-core`。
+**通过 npm（推荐）** — 全局安装 CLI；npm 会自动拉取 [`seekx-core`](https://www.npmjs.com/package/seekx-core)。
 
 ```bash
 npm install -g seekx
@@ -84,7 +87,7 @@ bun install
 bun link --cwd packages/cli   # 全局可用 seekx 命令
 ```
 
-### 配置
+### 首次设置
 
 ```bash
 seekx onboard    # 交互式 — 配置 API、检查环境
@@ -145,29 +148,6 @@ seekx watch          # 监听所有已索引的 collection
 4. 所有结果列表通过 **倒数排名融合**（Reciprocal Rank Fusion，RRF）合并。
 5. **重排序**（可选）：Cross-encoder 对融合后的候选重新打分，并与位置感知混合。
 
-## 与 AI 智能体集成
-
-[`seekx-openclaw`](https://www.npmjs.com/package/seekx-openclaw) 是 OpenClaw 内置 `memory-core` 后端的一键替换插件。安装后，智能体的 `memory_search` 和 `memory_get` 调用会自动通过 seekx 的完整混合检索管道处理——无需修改任何智能体提示词。
-
-```bash
-openclaw plugins install seekx-openclaw
-```
-
-在 `~/.openclaw/openclaw.json` 中配置插件：
-
-```json
-{
-  "plugins": {
-    "slots":   { "memory": "seekx" },
-    "entries": { "seekx": { "enabled": true } }
-  }
-}
-```
-
-若已使用 seekx CLI，插件会自动继承 `~/.seekx/config.yml` 中的 API 凭证，无需重复配置。详见[完整配置指南](packages/openclaw-plugin/README.md)。
-
----
-
 ## CLI 参考
 
 | 命令 | 说明 |
@@ -184,6 +164,7 @@ openclaw plugins install seekx-openclaw
 | `seekx watch` | 启动实时文件监听 |
 | `seekx status` | 显示索引统计与健康状态 |
 | `seekx config` | 查看或更新配置 |
+| `seekx mcp` | 启动 MCP 服务器（stdio），供 AI 智能体使用 |
 
 所有命令均支持 `--json` 以输出机器可读格式。
 
@@ -251,6 +232,62 @@ export SEEKX_SQLITE_PATH="$(brew --prefix sqlite)/lib/libsqlite3.dylib"
 
 `seekx onboard` 会检查此项并给出指引。
 
+## MCP 服务器
+
+通过 [Model Context Protocol](https://modelcontextprotocol.io) 将已索引的知识库暴露给 AI 智能体（Claude Desktop、Cursor 等）：
+
+```bash
+seekx mcp    # 通过 stdio 启动 MCP 服务器
+```
+
+服务器提供四个工具：`search`、`get`、`list`、`status`。
+
+## OpenClaw 集成
+
+[`seekx-openclaw`](https://www.npmjs.com/package/seekx-openclaw) 是可替换 [OpenClaw](https://openclaw.ai) 内置 `memory-core` 后端的插件，安装后 `memory_search` 与 `memory_get` 会透明地走 seekx 的 BM25 + 向量 + 重排序管道，无需改智能体或提示词。
+
+```bash
+openclaw plugins install seekx-openclaw
+```
+
+在 `~/.openclaw/openclaw.json` 中配置：
+
+```json
+{
+  "plugins": {
+    "slots":   { "memory": "seekx" },
+    "entries": { "seekx": { "enabled": true } }
+  }
+}
+```
+
+**相比内置后端额外获得：**
+
+- BM25 + 向量混合检索与 Cross-encoder 重排序
+- 基于 Jieba 的 CJK 全文检索
+- 主动自动回忆：在智能体搜索前将相关记忆注入提示
+- 检索结果脚注 `Source: path#line`（兼容 QMD）
+- 检索超时保护（默认 8 秒）
+- 优雅降级：无 API 密钥时仍可仅用 BM25
+
+若存在 `~/.seekx/config.yml`，插件会继承其中的 API 凭证，无需重复配置。详见 [插件 README](packages/openclaw-plugin/README.md)（Provider、额外目录与排障）。
+
+## 软件包
+
+```
+packages/
+  core/              seekx-core — 引擎库（SQLite、检索、索引器、监听器）
+  cli/               seekx — CLI + MCP 服务器
+  openclaw-plugin/   seekx-openclaw — OpenClaw 记忆后端插件
+bench/               检索基准（SciFact、MIRACL-zh）
+```
+
+| 包名 | 版本 | 说明 |
+|---|---|---|
+| [`seekx`](https://www.npmjs.com/package/seekx) | [![](https://img.shields.io/npm/v/seekx)](https://www.npmjs.com/package/seekx) | CLI — 13 个命令、MCP 服务器、实时文件监听 |
+| [`seekx-core`](https://www.npmjs.com/package/seekx-core) | [![](https://img.shields.io/npm/v/seekx-core)](https://www.npmjs.com/package/seekx-core) | 检索引擎库（Node / Bun 均可用） |
+| [`seekx-openclaw`](https://www.npmjs.com/package/seekx-openclaw) | [![](https://img.shields.io/npm/v/seekx-openclaw)](https://www.npmjs.com/package/seekx-openclaw) | OpenClaw 记忆后端插件 |
+
 ## 开发
 
 ```bash
@@ -262,20 +299,13 @@ bun run format                   # biome format --write
 
 ## 路线图
 
+- [x] MCP 服务器 — 将知识库暴露给 AI 智能体（Claude Desktop、Cursor 等）
 - [x] OpenClaw 记忆后端插件（[`seekx-openclaw`](https://www.npmjs.com/package/seekx-openclaw)）
-- [ ] MCP 服务器 — 将知识库暴露给 AI 智能体（Claude Desktop、Cursor 等）
+- [ ] OpenClaw 插件的会话转写索引
 - [ ] PDF 与 DOCX 支持
 - [ ] 多租户（按用户/工作区隔离索引）
 - [ ] 用于搜索与 collection 管理的 Web UI
 - [ ] 自定义文件解析器的插件系统
-
-## 软件包
-
-| 包名 | 版本 | 说明 |
-|---|---|---|
-| [`seekx`](https://www.npmjs.com/package/seekx) | [![](https://img.shields.io/npm/v/seekx)](https://www.npmjs.com/package/seekx) | CLI — 13 个命令、MCP 服务器、实时文件监听 |
-| [`seekx-core`](https://www.npmjs.com/package/seekx-core) | [![](https://img.shields.io/npm/v/seekx-core)](https://www.npmjs.com/package/seekx-core) | 检索引擎库（Node / Bun 均可用） |
-| [`seekx-openclaw`](https://www.npmjs.com/package/seekx-openclaw) | [![](https://img.shields.io/npm/v/seekx-openclaw)](https://www.npmjs.com/package/seekx-openclaw) | OpenClaw 记忆后端插件 |
 
 ## 许可
 
