@@ -55,6 +55,7 @@ seekx does.
 - **Content-aware chunking** — Markdown heading-based splitting; plain-text paragraph splitting
 - **Incremental indexing** — SHA-1 content hashing skips unchanged files; only re-embeds what changed
 - **JSON output** — every command supports `--json` for scripting and piping
+- **OpenClaw memory backend** — drop-in plugin that replaces `memory-core` with seekx's hybrid search pipeline
 
 ## Quick start
 
@@ -143,6 +144,29 @@ Query
 3. **HyDE** (optional): a hypothetical answer is generated and embedded as an additional vector search pass.
 4. All result lists are merged via **Reciprocal Rank Fusion** (RRF).
 5. **Reranking** (optional): a cross-encoder re-scores the fused candidates with position-aware blending.
+
+## Use with AI agents
+
+[`seekx-openclaw`](https://www.npmjs.com/package/seekx-openclaw) is a drop-in plugin that replaces OpenClaw's built-in `memory-core` backend with seekx's full hybrid search pipeline. Once installed, the agent's `memory_search` and `memory_get` calls are automatically routed through BM25 + vector + rerank — no changes to your agent or prompts are needed.
+
+```bash
+openclaw plugins install seekx-openclaw
+```
+
+Configure the plugin in `~/.openclaw/openclaw.json`:
+
+```json
+{
+  "plugins": {
+    "slots":   { "memory": "seekx" },
+    "entries": { "seekx": { "enabled": true } }
+  }
+}
+```
+
+The plugin inherits API credentials from `~/.seekx/config.yml` when that file exists, so no duplication is needed if you already use the seekx CLI. See the [full setup guide](packages/openclaw-plugin/README.md) for provider configuration, extra directories, and troubleshooting.
+
+---
 
 ## CLI reference
 
@@ -238,11 +262,20 @@ bun run format                   # biome format --write
 
 ## Roadmap
 
+- [x] OpenClaw memory backend plugin ([`seekx-openclaw`](https://www.npmjs.com/package/seekx-openclaw))
 - [ ] MCP server — expose your knowledge base to AI agents (Claude Desktop, Cursor, etc.)
 - [ ] PDF and DOCX support
 - [ ] Multi-tenancy (isolated indexes per user/workspace)
 - [ ] Web UI for search and collection management
 - [ ] Plugin system for custom file parsers
+
+## Packages
+
+| Package | Version | Description |
+|---|---|---|
+| [`seekx`](https://www.npmjs.com/package/seekx) | [![](https://img.shields.io/npm/v/seekx)](https://www.npmjs.com/package/seekx) | CLI — 13 commands, MCP server, realtime watcher |
+| [`seekx-core`](https://www.npmjs.com/package/seekx-core) | [![](https://img.shields.io/npm/v/seekx-core)](https://www.npmjs.com/package/seekx-core) | Search engine library (Node / Bun compatible) |
+| [`seekx-openclaw`](https://www.npmjs.com/package/seekx-openclaw) | [![](https://img.shields.io/npm/v/seekx-openclaw)](https://www.npmjs.com/package/seekx-openclaw) | OpenClaw memory backend plugin |
 
 ## License
 
