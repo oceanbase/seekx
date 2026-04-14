@@ -1,8 +1,9 @@
 # Skill: Using seekx memory search in OpenClaw
 
 seekx is installed as the OpenClaw memory backend.
-`memory_search` and `memory_get` now route through seekx's hybrid pipeline:
-BM25 full-text + vector kNN + cross-encoder reranking + query expansion.
+`memory_search` and `memory_get` now route through seekx's search pipeline:
+BM25 full-text by default, with vector kNN, cross-encoder reranking, and query
+expansion enabled when the required models and runtime support are available.
 
 ---
 
@@ -28,8 +29,9 @@ Call `memory_search` when the user's message involves:
 
 ## How to search
 
-Use natural language queries, not keywords. The search engine handles
-query expansion and semantic matching internally.
+Use natural language queries, not keywords. When configured, seekx handles
+query expansion and semantic matching internally; otherwise it falls back to
+BM25-only search.
 
 Good queries:
 ```
@@ -67,14 +69,12 @@ memory_search("API authentication flow", { collection: "docs" })
 memory_search("John Smith", { collection: "notes" })
 ```
 
-List available collections and their document counts:
+Collection names come from:
+- `plugins.entries.seekx.config.paths[].name` in `~/.openclaw/openclaw.json`
+- the built-in collection name `openclaw-memory` for OpenClaw's own memory files
 
-```bash
-openclaw memory status
-```
-
-The `collections` array in the output shows all indexed directories.
-The collection named `openclaw-memory` is OpenClaw's built-in memory files.
+Use `openclaw status` to confirm that seekx is active and that aggregate file
+and chunk counts are non-zero after indexing.
 
 ---
 
@@ -90,8 +90,12 @@ Use `memory_get` to read the full file content when:
 memory_get("/Users/me/notes/people/alice.md")
 ```
 
-`memory_get` reads the live file from disk, not the indexed snapshot,
-so it always returns the current version.
+Prefer paths that came from `memory_search` results. seekx only returns content
+for files inside indexed collections; paths outside indexed scope resolve to an
+empty string.
+
+For readable indexed paths, `memory_get` reads the live file from disk rather
+than the indexed snapshot, so it returns the current version.
 
 ---
 
@@ -105,7 +109,9 @@ Each result contains:
 
 If scores are all below 0.2, the query likely didn't match well.
 Try rephrasing with more context, or check that the relevant files are in
-an indexed collection (`openclaw memory status`).
+an indexed collection (configured `paths[].name` or the built-in
+`openclaw-memory` collection). `openclaw status` can confirm that the backend
+is active and that indexing has completed.
 
 ---
 

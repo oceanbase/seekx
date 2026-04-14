@@ -187,20 +187,21 @@ packages/openclaw-plugin/
 {
   "name": "@seekx/openclaw",
   "version": "0.1.0",
-  "description": "OpenClaw memory backend: hybrid BM25 + vector search with reranking",
+  "description": "OpenClaw memory backend: hybrid BM25 + vector search with reranking and CJK support",
   "type": "module",
   "main": "./src/index.ts",
   "exports": { ".": "./src/index.ts" },
   "files": ["src", "skills", "openclaw.plugin.json"],
+  "openclaw": {
+    "extensions": ["./src/index.ts"],
+    "install": { "minHostVersion": ">=2026.4.0" }
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "bun test test/"
   },
   "dependencies": {
-    "seekx-core": "workspace:*"
-  },
-  "peerDependencies": {
-    "openclaw": ">=2026.4.0"
+    "seekx-core": "^0.2.2"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -555,19 +556,23 @@ export interface MemorySearchOpts {
 
 export interface BackendStatus {
   backend: string;
-  dbPath: string;
-  documents: number;
-  chunks: number;
-  embeddedChunks: number;
-  vectorSearchAvailable: boolean;
-  embedModel: string | null;
-  collections: Array<{ name: string; path: string; docCount: number }>;
+  provider?: string;
+  dbPath?: string;
+  files?: number;
+  chunks?: number;
+  documents?: number;
+  embeddedChunks?: number;
+  vectorSearchAvailable?: boolean;
+  embedModel?: string | null;
+  collections?: Array<{ name: string; path: string; docCount: number }>;
+  vector?: { enabled: boolean; available?: boolean };
+  custom?: Record<string, unknown>;
 }
 
 export interface MemorySearchManager {
   search(query: string, opts: MemorySearchOpts): Promise<MemorySearchResult[]>;
   readFile(path: string): Promise<string>;
-  status(): Promise<BackendStatus>;
+  status(): BackendStatus;
   probeEmbeddingAvailability(): Promise<boolean>;
   probeVectorAvailability(): Promise<boolean>;
 }
@@ -589,6 +594,7 @@ export function buildMemorySearchManager(lc: SeekxLifecycle): { manager: MemoryS
      * All stages degrade gracefully when unavailable.
      */
     async search(query, opts) {
+      await lc.waitForSearchReady();
       const limit = opts.limit ?? lc.config.searchLimit;
       const { results } = await hybridSearch(lc.store, lc.client, query, {
         limit,
@@ -608,32 +614,50 @@ export function buildMemorySearchManager(lc: SeekxLifecycle): { manager: MemoryS
 
     /**
      * memory_get implementation.
-     * Returns the full content of the indexed file at the given absolute path.
-     * Falls back to an empty string if the file no longer exists on disk.
+     * Returns the live file content when the path is inside an indexed
+     * collection. Falls back to an empty string for deleted files or paths
+     * outside indexed scope.
      */
     async readFile(path) {
+      const readablePath = await lc.resolveReadablePath(path);
+      if (!readablePath) return "";
       try {
-        return readFileSync(path, "utf-8");
+        return readFileSync(readablePath, "utf-8");
       } catch {
         return "";
       }
     },
 
-    async status() {
-      const s = lc.store.getStatus();
+    status() {
+      const s = lc.store?.getStatus() ?? readPersistedSeekxStatusSync(lc.config.dbPath);
+      if (!s) {
+        return {
+          backend: "seekx",
+          provider: "seekx",
+          dbPath: lc.config.dbPath,
+          files: 0,
+          chunks: 0,
+        };
+      }
       return {
         backend: "seekx",
+        provider: "seekx",
         dbPath: lc.config.dbPath,
-        documents: s.totalDocuments,
+        files: s.totalDocuments,
         chunks: s.totalChunks,
-        embeddedChunks: s.embeddedChunks,
-        vectorSearchAvailable: s.vectorSearchAvailable,
-        embedModel: s.embedModel,
-        collections: s.collections.map((c) => ({
-          name: c.name,
-          path: c.path,
-          docCount: c.docCount,
-        })),
+        vector: {
+          enabled: s.vectorSearchAvailable,
+          available: s.vectorSearchAvailable,
+        },
+        custom: {
+          embeddedChunks: s.embeddedChunks,
+          embedModel: s.embedModel,
+          collections: s.collections.map((c) => ({
+            name: c.name,
+            path: c.path,
+            docCount: c.docCount,
+          })),
+        },
       };
     },
 
@@ -644,7 +668,11 @@ export function buildMemorySearchManager(lc: SeekxLifecycle): { manager: MemoryS
     },
 
     async probeVectorAvailability() {
-      return lc.store.getStatus().vectorSearchAvailable;
+      return (
+        lc.store?.getStatus().vectorSearchAvailable ??
+        readPersistedSeekxStatusSync(lc.config.dbPath)?.vectorSearchAvailable ??
+        false
+      );
     },
   };
 
@@ -660,12 +688,13 @@ Responsibility: plugin entry point. Wires lifecycle and runtime into OpenClaw's
 API.
 
 ```typescript
-import { definePluginEntry } from "openclaw";
+import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { resolvePluginConfig, type RawPluginConfig } from "./config.ts";
 import { SeekxLifecycle } from "./lifecycle.ts";
 import { buildMemorySearchManager } from "./runtime.ts";
 
 export default definePluginEntry({
+  id: "seekx",
   register(api) {
     const raw = (api.pluginConfig ?? {}) as RawPluginConfig;
     const config = resolvePluginConfig(raw);
@@ -682,16 +711,13 @@ export default definePluginEntry({
         resolvePluginConfig(rawCfg as RawPluginConfig),
     });
 
-    // Graceful shutdown: stop watcher and close DB when OpenClaw exits.
-    // OpenClaw calls the registered shutdown hook on process termination.
-    api.onShutdown?.(() => lifecycle.stop());
+    api.registerService({
+      id: "seekx-lifecycle",
+      stop: () => lifecycle.stop(),
+    });
   },
 });
 ```
-
-> **Note on `api.onShutdown`**: If the OpenClaw SDK does not expose
-> `onShutdown`, register shutdown via `process.on("exit", ...)` and
-> `process.on("SIGTERM", ...)` inside `SeekxLifecycle.start()` instead.
 
 ---
 
@@ -702,8 +728,9 @@ export default definePluginEntry({
 ```markdown
 # seekx memory backend — install
 
-seekx replaces OpenClaw's memory backend with hybrid search:
-BM25 + vector similarity + cross-encoder reranking + query expansion.
+seekx replaces OpenClaw's memory backend with a search pipeline that always
+supports BM25 and optionally enables vector similarity, reranking, and query
+expansion when configured.
 Supports CJK (Chinese/Japanese/Korean) via Jieba tokenizer.
 Requires an OpenAI-compatible API (SiliconFlow, Jina, Ollama, OpenAI).
 
@@ -758,17 +785,14 @@ Ask the user which directories they want indexed.
 
 ## Step 4 — Restart OpenClaw and verify
 
-  openclaw memory status
+  openclaw status
 
-Expected output includes: backend: "seekx"
-
-  openclaw memory search "test"
-
-Expected: results from seekx backend.
+Expected output includes a `Memory` row containing `plugin seekx`.
+`vector off` is valid and indicates BM25-only mode.
 
 ## Done
 
-memory_search and memory_get now run through seekx's hybrid pipeline.
+memory_search and memory_get now run through seekx's search pipeline.
 OpenClaw's memory files (MEMORY.md, memory/**/*.md) are indexed automatically.
 Extra directories are indexed incrementally and watched for changes.
 ```
@@ -779,7 +803,8 @@ Extra directories are indexed incrementally and watched for changes.
 # seekx memory search — usage
 
 seekx is installed as the OpenClaw memory backend.
-memory_search now uses hybrid BM25 + vector + reranking under the hood.
+memory_search now uses seekx's search pipeline: BM25 by default, with vector,
+reranking, and query expansion enabled when available.
 
 ## When to search
 
@@ -793,9 +818,10 @@ Search before responding to any query that might be answered by stored knowledge
 Use the standard memory_search tool. seekx handles the rest:
 
   memory_search("kubernetes pod crash loop")
-  → query expansion runs in background
-  → BM25 + vector search across all collections
-  → cross-encoder reranking for precision
+  → query expansion may run when configured
+  → BM25 search always runs
+  → vector search may join when embeddings are available
+  → cross-encoder reranking may run when configured
   → top results injected into context
 
 ## Scoping to a collection
@@ -804,13 +830,16 @@ If you know the relevant directory, pass it as a filter:
 
   memory_search("架构设计", { collection: "docs" })
 
-List available collections with: openclaw memory status
+Collection names come from `paths[].name` in plugin config. The built-in
+OpenClaw memory collection is named `openclaw-memory`.
 
 ## Retrieving a full document
 
 Use memory_get with the path returned in search results:
 
   memory_get("/Users/me/notes/people/alice.md")
+
+Paths outside indexed collections resolve to an empty string.
 ```
 
 ---
@@ -931,8 +960,7 @@ cat ~/.seekx/config.yml   # verify embed/rerank/expand are set
 bun run src/index.ts
 
 # Or: configure OpenClaw, restart, then:
-openclaw memory status    # should show backend: seekx
-openclaw memory search "test query"
+openclaw status           # Memory row should show plugin seekx
 ```
 
 ---
@@ -988,32 +1016,14 @@ User tells the agent:
 > "帮我安装 seekx 内存后端，我的笔记在 ~/notes，API key 是 sk-xxx"
 
 Agent reads `skills/install/SKILL.md` → runs `npm install -g @seekx/openclaw`
-→ edits `openclaw.json` → restarts OpenClaw → verifies `openclaw memory status`.
+→ edits `openclaw.json` → restarts OpenClaw → verifies `openclaw status`.
 Total user interaction: one prompt + provide API key. Agent does the rest.
 
 ---
 
-## Open questions (decide before implementation)
+## Remaining design consideration
 
-1. **`api.onShutdown` availability**: Check the OpenClaw SDK typings for the
-   exact hook name. If unavailable, use `process.on("exit", ...)` inside
-   `lifecycle.start()` as the fallback.
-
-2. **`registerMemoryRuntime` exact signature**: Verify against the SDK type
-   definitions. The interface is inferred from the Honcho plugin source. If the
-   SDK export shape differs (e.g., separate arguments vs. object), adjust
-   `src/index.ts` accordingly.
-
-3. **`MemorySearchResult` shape**: OpenClaw's runtime formats search results
-   for the system prompt. Confirm the exact fields it reads (`path`, `content`,
-   `score`). If it expects additional fields (e.g., `title`, `line_range`),
-   extend `MemorySearchResult` and populate from `SearchResult`.
-
-4. **Collection isolation**: The plugin currently creates a single SQLite
+1. **Collection isolation**: The plugin currently creates a single SQLite
    database (`openclaw.db`) shared across all OpenClaw agents. If per-agent
-   isolation is needed, append the agent ID to `dbPath` (OpenClaw likely
-   provides it via `api.agentId` or similar).
-
-5. **`definePluginEntry` import path**: Confirm whether the OpenClaw SDK
-   exports this from `"openclaw"` or from a sub-path like
-   `"openclaw/plugin"`. Adjust the import in `src/index.ts`.
+   isolation is needed in the future, append the agent ID to `dbPath` if the
+   host exposes a stable agent identifier.

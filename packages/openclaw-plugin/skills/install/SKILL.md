@@ -16,9 +16,12 @@ Installs the `@seekx/openclaw` plugin into the user's OpenClaw gateway,
 configures an embedding/reranking provider, and verifies the setup end-to-end.
 
 After completion:
-- `memory_search` and `memory_get` route through seekx's hybrid search pipeline
+- `memory_search` and `memory_get` route through seekx's search pipeline
 - OpenClaw's memory files are indexed automatically
 - Any extra directories the user specified are indexed and watched
+- Vector search, reranking, and query expansion are enabled only when the
+  necessary models and runtime support are available; otherwise seekx
+  degrades safely to BM25-only mode
 
 ---
 
@@ -289,19 +292,22 @@ openclaw gateway status
 ### Step 7 — Verify
 
 ```bash
-openclaw memory status
+openclaw status
 ```
 
-Look for `"backend": "seekx"` in the output. If present, the installation succeeded.
+Confirm the `Memory` row contains `plugin seekx`.
 
-Run a test search:
+Interpret the row as follows:
+- `N files · N chunks · plugin seekx` → installation and indexing are working
+- `0 files · 0 chunks · plugin seekx` right after restart → the initial index
+  may still be warming up; wait 15 seconds and run `openclaw status` again
+- `plugin seekx · vector off` → valid BM25-only mode; vector search is not
+  active because no embedding model is configured or `sqlite-vec` is unavailable
 
-```bash
-openclaw memory search "test"
-```
-
-The first search may return no results if indexing has not finished yet
-(initial indexing runs in the background). Wait 15 seconds and retry.
+If the user already has memory files and an active OpenClaw agent session,
+optionally ask a memory-backed question through the agent to confirm end-to-end
+retrieval. Do not instruct the user to run `openclaw memory ...`; current
+OpenClaw versions expose memory backend state through `openclaw status`.
 
 ---
 
@@ -313,9 +319,9 @@ Tell the user:
 >
 > - OpenClaw's memory files (`MEMORY.md`, `memory/**/*.md`) are indexed automatically.
 > - [If extra directories were configured] Your extra directories are indexed and watched for changes.
-> - `memory_search` and `memory_get` now use hybrid BM25 + vector search.
+> - `memory_search` and `memory_get` now use seekx's search pipeline: BM25 by default, plus vector/rerank/expansion when configured and available.
 >
-> To check status at any time: `openclaw memory status`
+> To check status at any time: `openclaw status`
 > To add more directories later: edit `~/.openclaw/openclaw.json` → `plugins.entries.seekx.config.paths`
 
 ---
@@ -326,13 +332,13 @@ Tell the user:
 → Try `openclaw plugins install @seekx/openclaw --force`
 → Or use the npm fallback path in Step 2.
 
-**`openclaw memory status` shows a different backend after restart**
+**`openclaw status` does not show `plugin seekx` in the Memory row**
 → Check that `plugins.slots.memory` is `"seekx"` (not `"memory-core"` or missing).
 → Run `openclaw plugins list` and confirm seekx is listed as enabled.
 
-**Vector search not working (status shows vectorSearchAvailable: false)**
-→ This is expected on some platforms where `sqlite-vec` cannot load.
-→ BM25 search still works. Confirm with `openclaw memory search "test"`.
+**Status shows `plugin seekx · vector off`**
+→ This is expected when no embedding model is configured, the API credentials are missing, or `sqlite-vec` cannot load.
+→ BM25 search still works; seekx is installed correctly.
 
 **API key error / 401 from provider**
 → Double-check the key and baseUrl.

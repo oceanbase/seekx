@@ -119,14 +119,17 @@ openclaw gateway restart
 ### Step 4 — Verify
 
 ```bash
-openclaw memory status
+openclaw status
 ```
 
-Expected output includes `backend: "seekx"`. Then run a test search:
+Expected output includes a `Memory` row containing `plugin seekx`.
+If the gateway has just restarted, `files` and `chunks` may stay at `0`
+briefly while the initial index pass completes. Re-run `openclaw status`
+after 15 seconds if needed.
 
-```bash
-openclaw memory search "test"
-```
+If the row shows `plugin seekx · vector off`, the plugin is still working
+correctly in BM25-only mode. This means vector search is not active because no
+embedding model is configured or `sqlite-vec` is unavailable.
 
 ---
 
@@ -231,11 +234,12 @@ Filter results to a specific directory by name:
 memory_search("API design", { collection: "docs" })
 ```
 
-List available collections:
+Collection names come from `plugins.entries.seekx.config.paths[].name` in
+`~/.openclaw/openclaw.json`. The built-in OpenClaw memory collection is always
+named `openclaw-memory`.
 
-```bash
-openclaw memory status
-```
+Use `openclaw status` to confirm that seekx is active and that aggregate file
+and chunk counts are non-zero after indexing.
 
 ### Retrieving a full document
 
@@ -331,7 +335,7 @@ openclaw plugins uninstall seekx
 
 ## Troubleshooting
 
-### `backend` field is not `"seekx"` in `openclaw memory status`
+### `openclaw status` does not show `plugin seekx` in the Memory row
 
 The `plugins.slots.memory` value must be set to `"seekx"` and the gateway
 must be restarted. Check for typos in `openclaw.json` and run
@@ -341,16 +345,23 @@ must be restarted. Check for typos in `openclaw.json` and run
 
 The first search after a gateway restart may take longer because seekx waits
 for the startup index pass to finish before returning results. Run
-`openclaw memory status` to see `documents` and `chunks` counts — if both are
+`openclaw status` and inspect the `Memory` row — if `files` and `chunks` are
 still 0 after the initial pass completes, check gateway logs for indexing
 errors.
 
 ### Vector search not available
 
-`openclaw memory status` shows `vectorSearchAvailable: false`. This means
+`openclaw status` shows `plugin seekx · vector off`. This means either no
+embedding model is configured, the embedding credentials are missing, or
 `sqlite-vec` could not be loaded. On supported platforms (macOS, Linux x64),
-it loads automatically via the `better-sqlite3-sqlitevec` package.
-Reinstall seekx-core's native dependencies if the issue persists.
+seekx attempts to enable vector search automatically when embeddings are
+configured.
+
+If you expect vector search, verify:
+- `embedModel` is configured
+- `baseUrl` and `apiKey` are valid for the chosen provider
+- the runtime can load `sqlite-vec`
+
 Vector search is optional; BM25 continues to work regardless.
 
 ### Embedding API errors
@@ -360,7 +371,9 @@ Gateway logs show connection errors or 401/403 responses. Verify:
 - `apiKey` is valid for the chosen provider
 - `embedModel` name matches exactly what the provider expects
 
-Run `openclaw plugins inspect seekx` to see the resolved plugin config.
+Check `plugins.entries.seekx.config` in `~/.openclaw/openclaw.json` and
+`~/.seekx/config.yml` to confirm which credentials and model names are being
+resolved.
 
 ### Files in an extra directory are not indexed
 
@@ -439,7 +452,7 @@ The agent will:
 2. Install `@seekx/openclaw`
 3. Ask you 4–5 targeted questions to choose a provider and collect your API key
 4. Write `~/.openclaw/openclaw.json` with the correct configuration
-5. Restart the gateway and confirm `backend: "seekx"`
+5. Restart the gateway and confirm the `Memory` row shows `plugin seekx`
 
 ### Option B — paste the skill (any agent)
 
