@@ -55,6 +55,7 @@ seekx は理解します。
 - **コンテキストを意識したチャンク分割** — Markdown は見出し単位、プレーンテキストは段落単位
 - **増分インデックス** — SHA-1 コンテンツハッシュで未変更ファイルをスキップ、変更分だけ再埋め込み
 - **JSON 出力** — すべてのコマンドが `--json` に対応（スクリプト・パイプ向け）
+- **OpenClaw メモリバックエンド** — `memory-core` をそのまま置き換えるプラグイン。seekx のハイブリッド検索パイプラインを OpenClaw に接続します
 
 ## クイックスタート
 
@@ -143,6 +144,29 @@ seekx watch          # インデックス済みコレクションをすべて監
 3. **HyDE**（任意）：仮想の回答を生成し埋め込み、追加のベクトル検索パスとして使います。
 4. すべての結果リストを **Reciprocal Rank Fusion**（RRF）でマージします。
 5. **再ランキング**（任意）：クロスエンコーダが融合後の候補を再スコアし、位置を考慮したブレンディングを行います。
+
+## AI エージェントとの連携
+
+[`seekx-openclaw`](https://www.npmjs.com/package/seekx-openclaw) は、OpenClaw 内蔵の `memory-core` バックエンドをそのまま置き換えるプラグインです。インストールすると、エージェントの `memory_search` / `memory_get` 呼び出しが自動的に seekx のハイブリッド検索パイプラインを通るようになります。エージェントのプロンプトを変更する必要はありません。
+
+```bash
+openclaw plugins install seekx-openclaw
+```
+
+`~/.openclaw/openclaw.json` でプラグインを設定します：
+
+```json
+{
+  "plugins": {
+    "slots":   { "memory": "seekx" },
+    "entries": { "seekx": { "enabled": true } }
+  }
+}
+```
+
+seekx CLI を既に使用している場合、プラグインは `~/.seekx/config.yml` の API 認証情報を自動的に継承するため、重複した設定は不要です。詳細は[完全セットアップガイド](packages/openclaw-plugin/README.md)をご覧ください。
+
+---
 
 ## CLI リファレンス
 
@@ -238,11 +262,20 @@ bun run format                   # biome format --write
 
 ## ロードマップ
 
+- [x] OpenClaw メモリバックエンドプラグイン（[`seekx-openclaw`](https://www.npmjs.com/package/seekx-openclaw)）
 - [ ] MCP サーバー — ナレッジベースを AI エージェント（Claude Desktop、Cursor など）に公開
 - [ ] PDF / DOCX 対応
 - [ ] マルチテナンシー（ユーザー／ワークスペースごとの分離インデックス）
 - [ ] 検索とコレクション管理の Web UI
 - [ ] カスタムファイルパーサー用プラグインシステム
+
+## パッケージ
+
+| パッケージ | バージョン | 説明 |
+|---|---|---|
+| [`seekx`](https://www.npmjs.com/package/seekx) | [![](https://img.shields.io/npm/v/seekx)](https://www.npmjs.com/package/seekx) | CLI — 13 コマンド、MCP サーバー、リアルタイムウォッチャー |
+| [`seekx-core`](https://www.npmjs.com/package/seekx-core) | [![](https://img.shields.io/npm/v/seekx-core)](https://www.npmjs.com/package/seekx-core) | 検索エンジンライブラリ（Node / Bun 対応） |
+| [`seekx-openclaw`](https://www.npmjs.com/package/seekx-openclaw) | [![](https://img.shields.io/npm/v/seekx-openclaw)](https://www.npmjs.com/package/seekx-openclaw) | OpenClaw メモリバックエンドプラグイン |
 
 ## ライセンス
 
