@@ -1,5 +1,5 @@
 {
-  "name": "@seekx/openclaw",
+  "name": "seekx-openclaw",
   "version": "0.3.0",
   "description": "OpenClaw memory backend: hybrid BM25 + vector search with reranking and CJK support",
   "type": "module",

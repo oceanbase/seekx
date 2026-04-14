@@ -12,7 +12,7 @@
 
 ## What this skill does
 
-Installs the `@seekx/openclaw` plugin into the user's OpenClaw gateway,
+Installs the `seekx-openclaw` plugin into the user's OpenClaw gateway,
 configures an embedding/reranking provider, and verifies the setup end-to-end.
 
 After completion:
@@ -51,19 +51,19 @@ Stop here if OpenClaw is not present.
 ### Step 2 — Install the seekx plugin
 
 ```bash
-openclaw plugins install @seekx/openclaw
+openclaw plugins install seekx-openclaw
 ```
 
 If this fails with a "not found" error, try the npm fallback:
 
 ```bash
-npm install -g @seekx/openclaw
+npm install -g seekx-openclaw
 ```
 
 Then register it as a local plugin:
 
 ```bash
-openclaw plugins install -l "$(npm root -g)/@seekx/openclaw"
+openclaw plugins install -l "$(npm root -g)/seekx-openclaw"
 ```
 
 Confirm it loaded:
@@ -329,7 +329,7 @@ Tell the user:
 ## Troubleshooting
 
 **`openclaw plugins install` hangs or fails**
-→ Try `openclaw plugins install @seekx/openclaw --force`
+→ Try `openclaw plugins install seekx-openclaw --force`
 → Or use the npm fallback path in Step 2.
 
 **`openclaw status` does not show `plugin seekx` in the Memory row**

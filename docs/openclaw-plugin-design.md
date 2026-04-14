@@ -185,7 +185,7 @@ packages/openclaw-plugin/
 
 ```json
 {
-  "name": "@seekx/openclaw",
+  "name": "seekx-openclaw",
   "version": "0.1.0",
   "description": "OpenClaw memory backend: hybrid BM25 + vector search with reranking and CJK support",
   "type": "module",
@@ -736,8 +736,8 @@ Requires an OpenAI-compatible API (SiliconFlow, Jina, Ollama, OpenAI).
 
 ## Step 1 — Install seekx globally
 
-  npm install -g @seekx/openclaw
-  # or: bun add -g @seekx/openclaw
+  npm install -g seekx-openclaw
+  # or: bun add -g seekx-openclaw
 
 Verify: seekx-openclaw --version
 
@@ -1015,7 +1015,7 @@ Config: reads API keys and models from existing `~/.seekx/config.yml`.
 User tells the agent:
 > "帮我安装 seekx 内存后端，我的笔记在 ~/notes，API key 是 sk-xxx"
 
-Agent reads `skills/install/SKILL.md` → runs `npm install -g @seekx/openclaw`
+Agent reads `skills/install/SKILL.md` → runs `npm install -g seekx-openclaw`
 → edits `openclaw.json` → restarts OpenClaw → verifies `openclaw status`.
 Total user interaction: one prompt + provide API key. Agent does the rest.
 

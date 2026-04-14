@@ -1,6 +1,6 @@
 # seekx OpenClaw Plugin — User Guide
 
-**Package**: `@seekx/openclaw`  
+**Package**: `seekx-openclaw`  
 **Slot**: `plugins.slots.memory`  
 **Requires**: OpenClaw ≥ 2026.4.0, Node ≥ 22 or Bun ≥ 1.1.0
 
@@ -53,7 +53,7 @@ builtin backend for most queries, especially CJK text.
 ### Step 1 — Install the plugin
 
 ```bash
-openclaw plugins install @seekx/openclaw
+openclaw plugins install seekx-openclaw
 ```
 
 OpenClaw tries [ClawHub](https://clawhub.dev) first, then npm automatically.
@@ -449,7 +449,7 @@ https://raw.githubusercontent.com/seekx/seekx/main/packages/openclaw-plugin/skil
 
 The agent will:
 1. Verify OpenClaw is installed
-2. Install `@seekx/openclaw`
+2. Install `seekx-openclaw`
 3. Ask you 4–5 targeted questions to choose a provider and collect your API key
 4. Write `~/.openclaw/openclaw.json` with the correct configuration
 5. Restart the gateway and confirm the `Memory` row shows `plugin seekx`

@@ -11,7 +11,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-**`@seekx/openclaw` (new package — `0.3.0`)**
+**`seekx-openclaw` (new package — `0.3.0`)**
 - First published OpenClaw memory-backend plugin: hybrid BM25 + vector search with reranking and CJK support.
 - Ships `skills/` directory and `openclaw.plugin.json` for OpenClaw host integration.
 
@@ -32,7 +32,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-**`@seekx/openclaw`**
+**`seekx-openclaw`**
 - Hardened runtime startup and file-access error paths.
 - Removed `openclaw` `peerDependency` (not on npm registry, caused install failures).
 - Replaced `workspace:*` with the published `seekx-core` version in the published tarball.
