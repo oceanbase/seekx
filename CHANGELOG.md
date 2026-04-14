@@ -7,6 +7,18 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.3.1] — 2026-04-14
+
+### Changed
+
+- **Documentation**: aligned `README.zh-CN.md`, `README.ja.md`, and `README.ko.md` with the English `README.md` (structure, MCP / OpenClaw sections, CLI table, roadmap, packages tree).
+
+### Housekeeping
+
+- **All published packages** (`seekx`, `seekx-core`, `seekx-openclaw`): version bump to **0.3.1** with `seekx-core` dependency range `^0.3.1` where applicable.
+
+---
+
 ## [0.3.0] — 2026-04-14
 
 ### Added

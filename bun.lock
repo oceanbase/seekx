@@ -12,7 +12,7 @@
     },
     "packages/cli": {
       "name": "seekx",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "bin": {
         "seekx": "./src/seekx.ts",
       },
@@ -20,7 +20,7 @@
         "@inquirer/prompts": "^7.5.0",
         "@modelcontextprotocol/sdk": "^1.10.2",
         "commander": "^13.1.0",
-        "seekx-core": "workspace:*",
+        "seekx-core": "^0.3.1",
         "zod": "^3.24.2",
       },
       "devDependencies": {
@@ -32,7 +32,7 @@
     },
     "packages/core": {
       "name": "seekx-core",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
         "@node-rs/jieba": "^1.2.0",
         "better-sqlite3": "^11.0.0",
@@ -57,9 +57,9 @@
     },
     "packages/openclaw-plugin": {
       "name": "seekx-openclaw",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
-        "seekx-core": "^0.3.0",
+        "seekx-core": "^0.3.1",
       },
       "devDependencies": {
         "@types/bun": "latest",
