@@ -33,7 +33,7 @@ Exported from `seekx-core` (see `src/index.ts` in the repo):
 | Chunking | `chunkDocument`, `Chunk` |
 | Tokenizer | `expandForFTS`, `buildFTSQuery` |
 
-Use these modules to embed seekx in scripts, servers, or custom tooling. For end-user workflows (collections, CLI commands, config file layout), prefer the **`seekx`** CLI.
+Use these modules to embed seekx in scripts, servers, or custom tooling. For end-user workflows (collections, CLI commands, config file layout), prefer the **`seekx`** CLI. For OpenClaw integration, see **[`@seekx/openclaw`](https://www.npmjs.com/package/@seekx/openclaw)** which builds on this library.
 
 ## Documentation
 

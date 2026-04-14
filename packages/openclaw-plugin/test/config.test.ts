@@ -63,6 +63,17 @@ describe("resolvePluginConfig — defaults (no seekx config, empty plugin config
     expect(cfg.includeOpenClawMemory).toBe(true);
   });
 
+  test("autoRecall defaults are enabled and conservative", () => {
+    const cfg = resolvePluginConfig({}, noBase);
+    expect(cfg.autoRecall).toEqual({
+      enabled: true,
+      maxResults: 3,
+      minScore: 0.2,
+      maxChars: 1200,
+      minQueryLength: 4,
+    });
+  });
+
   test("embed fields are empty strings when nothing is configured", () => {
     const cfg = resolvePluginConfig({}, noBase);
     expect(cfg.embed.baseUrl).toBe("");
@@ -74,6 +85,16 @@ describe("resolvePluginConfig — defaults (no seekx config, empty plugin config
     const cfg = resolvePluginConfig({}, noBase);
     expect(cfg.rerank).toBeNull();
     expect(cfg.expand).toBeNull();
+  });
+
+  test("citations defaults to 'auto'", () => {
+    const cfg = resolvePluginConfig({}, noBase);
+    expect(cfg.citations).toBe("auto");
+  });
+
+  test("searchTimeoutMs defaults to 8000", () => {
+    const cfg = resolvePluginConfig({}, noBase);
+    expect(cfg.searchTimeoutMs).toBe(8000);
   });
 });
 
@@ -165,6 +186,60 @@ describe("resolvePluginConfig — plugin config overrides base config", () => {
     expect(cfg.includeOpenClawMemory).toBe(false);
   });
 
+  test("plugin citations overrides default", () => {
+    const cfg = resolvePluginConfig({ citations: "off" }, noBase);
+    expect(cfg.citations).toBe("off");
+  });
+
+  test("plugin citations='on' is accepted", () => {
+    const cfg = resolvePluginConfig({ citations: "on" }, noBase);
+    expect(cfg.citations).toBe("on");
+  });
+
+  test("invalid citations value fails fast", () => {
+    expect(() => resolvePluginConfig({ citations: "always" }, noBase)).toThrow(
+      'Invalid plugin config: citations must be "auto", "on", or "off"',
+    );
+  });
+
+  test("plugin searchTimeoutMs overrides default", () => {
+    const cfg = resolvePluginConfig({ searchTimeoutMs: 15000 }, noBase);
+    expect(cfg.searchTimeoutMs).toBe(15000);
+  });
+
+  test("searchTimeoutMs=0 disables timeout", () => {
+    const cfg = resolvePluginConfig({ searchTimeoutMs: 0 }, noBase);
+    expect(cfg.searchTimeoutMs).toBe(0);
+  });
+
+  test("invalid searchTimeoutMs fails fast", () => {
+    expect(() => resolvePluginConfig({ searchTimeoutMs: -1 }, noBase)).toThrow(
+      "Invalid plugin config: searchTimeoutMs must be a non-negative number",
+    );
+  });
+
+  test("plugin autoRecall config overrides defaults", () => {
+    const cfg = resolvePluginConfig(
+      {
+        autoRecall: {
+          enabled: false,
+          maxResults: 5,
+          minScore: 0.35,
+          maxChars: 800,
+          minQueryLength: 8,
+        },
+      },
+      noBase,
+    );
+    expect(cfg.autoRecall).toEqual({
+      enabled: false,
+      maxResults: 5,
+      minScore: 0.35,
+      maxChars: 800,
+      minQueryLength: 8,
+    });
+  });
+
   test("plugin paths are preserved", () => {
     const paths = [{ name: "notes", path: "~/notes" }];
     const cfg = resolvePluginConfig({ paths }, noBase);
@@ -186,6 +261,18 @@ describe("resolvePluginConfig — plugin config overrides base config", () => {
     );
   });
 
+  test("autoRecall validation fails fast with clear errors", () => {
+    expect(() => resolvePluginConfig({ autoRecall: true }, noBase)).toThrow(
+      "Invalid plugin config: autoRecall must be an object",
+    );
+    expect(() => resolvePluginConfig({ autoRecall: { enabled: "yes" } }, noBase)).toThrow(
+      "Invalid plugin config: autoRecall.enabled must be a boolean",
+    );
+    expect(() => resolvePluginConfig({ autoRecall: { minScore: 2 } }, noBase)).toThrow(
+      "Invalid plugin config: autoRecall.minScore must be a number between 0 and 1",
+    );
+  });
+
   test("full plugin config with no base: all fields from plugin", () => {
     const cfg = resolvePluginConfig(
       {
@@ -197,6 +284,7 @@ describe("resolvePluginConfig — plugin config overrides base config", () => {
         searchLimit: 8,
         refreshIntervalMs: 120_000,
         includeOpenClawMemory: false,
+        autoRecall: { enabled: false, maxResults: 2, minScore: 0.4, maxChars: 600 },
         paths: [{ name: "docs", path: "/docs" }],
         dbPath: "/tmp/test.db",
       },
@@ -208,6 +296,10 @@ describe("resolvePluginConfig — plugin config overrides base config", () => {
     expect(cfg.searchLimit).toBe(8);
     expect(cfg.refreshIntervalMs).toBe(120_000);
     expect(cfg.includeOpenClawMemory).toBe(false);
+    expect(cfg.autoRecall.enabled).toBe(false);
+    expect(cfg.autoRecall.maxResults).toBe(2);
+    expect(cfg.autoRecall.minScore).toBe(0.4);
+    expect(cfg.autoRecall.maxChars).toBe(600);
     expect(cfg.extraPaths).toEqual([{ name: "docs", path: "/docs" }]);
     expect(cfg.dbPath).toBe("/tmp/test.db");
   });

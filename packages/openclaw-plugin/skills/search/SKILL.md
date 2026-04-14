@@ -1,9 +1,37 @@
-# Skill: Using seekx memory search in OpenClaw
+# Skill: Seekx Memory Recall First
 
 seekx is installed as the OpenClaw memory backend.
 `memory_search` and `memory_get` now route through seekx's search pipeline:
 BM25 full-text by default, with vector kNN, cross-encoder reranking, and query
 expansion enabled when the required models and runtime support are available.
+
+---
+
+## Use this skill when
+
+The user is asking about:
+
+- Prior work or previously discussed decisions
+- Remembered facts, preferences, people, dates, or todos
+- Anything they asked you to "remember", "recall", "search in memory", or "check what I said before"
+- Any topic that might already be written in `MEMORY.md`, `memory/*.md`, or another indexed seekx collection
+
+This skill is for recall-first behavior. Use it before broad file inspection.
+
+---
+
+## First-step policy
+
+If `memory_search` is available, it is the default first step for recall tasks.
+
+1. Call `memory_search` before answering.
+2. If a result looks relevant, use `memory_get` or direct file read only for the matched path.
+3. Do not start with `find`, `ls`, or broad reads of `workspace/memory/`.
+4. Only fall back to direct file scanning if `memory_search` is unavailable, disabled, or returns no useful results.
+
+If relevant seekx memory matches are already injected into the prompt, use those
+matches first. Call `memory_get` only when you need more detail from a matched
+path.
 
 ---
 
@@ -27,6 +55,19 @@ Call `memory_search` when the user's message involves:
 
 ---
 
+## Trigger phrases
+
+These are strong hints that you should recall with seekx first:
+
+- "What did we decide before?"
+- "Search what I recorded earlier"
+- "Do you remember my preference?"
+- "Check my notes about this"
+- "请帮我搜索一下我之前记录的架构设计决策"
+- "我之前是不是说过..."
+
+---
+
 ## How to search
 
 Use natural language queries, not keywords. When configured, seekx handles
@@ -38,13 +79,23 @@ Good queries:
 memory_search("Alice's role at Acme Corp and her preferred communication style")
 memory_search("why we chose PostgreSQL over MySQL for the billing service")
 memory_search("架构评审会议上的决定")
+memory_search("之前记录的架构设计决策 使用 Java 开发 Web 应用")
 ```
 
 Less effective (but still works):
 ```
 memory_search("Alice Acme")
 memory_search("PostgreSQL MySQL")
+memory_search("架构设计决策")
 ```
+
+When the user's wording is short or ambiguous, expand it into a natural recall query:
+
+- User: "架构设计决策"
+- Better query: `memory_search("之前记录的架构设计决策 使用 Java 开发 Web 应用")`
+
+- User: "我之前怎么说 PostgreSQL 的"
+- Better query: `memory_search("why we chose PostgreSQL and what we said about it before")`
 
 ---
 
@@ -54,6 +105,7 @@ memory_search("PostgreSQL MySQL")
 memory_search(query: string, opts?: {
   limit?: number;       // default: 6; increase for broad topics, decrease for precision
   collection?: string;  // restrict to a named collection (see below)
+  citations?: "auto" | "on" | "off";  // override config-level citations mode per request
 })
 ```
 
@@ -103,9 +155,21 @@ than the indexed snapshot, so it returns the current version.
 
 Each result contains:
 - `path` — source file (absolute path)
-- `content` — the matched text excerpt
+- `content` — the matched text excerpt, with a `Source: path#line` citation
+  footer when citations are enabled (default: `"auto"`)
 - `score` — relevance score (0–1); above 0.5 is a strong match
 - `collection` — which indexed directory the file is from
+
+When citations are enabled (`citations: "auto"` or `"on"` in plugin config),
+the `content` field ends with a line like:
+
+```
+Source: /Users/me/notes/decision.md#12
+```
+
+This is compatible with QMD's citation format and helps the agent trace
+provenance. Set `citations: "off"` in the plugin config to suppress the
+footer — the `path` field is still available for manual citation.
 
 If scores are all below 0.2, the query likely didn't match well.
 Try rephrasing with more context, or check that the relevant files are in
@@ -145,6 +209,10 @@ memory_search("技術的な決定の理由")
 
 After retrieving memory results, synthesize them with your own knowledge.
 Cite the source file path so the user knows where the information came from.
+
+If you found a good match through seekx, answer from it. Do not restart the
+process with a broad workspace scan unless the search result is clearly
+insufficient.
 
 Example response pattern:
 > Based on your notes (`~/notes/projects/acme.md`), the Acme project's API

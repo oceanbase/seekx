@@ -16,8 +16,9 @@ same, quality improves.
 OpenClaw has three built-in memory backends: builtin (SQLite), QMD (local GGUF
 sidecar), and Honcho (cloud). seekx's positioning is closest to QMD: local-first
 file indexing with hybrid search. However, seekx is implemented as an OpenClaw
-TypeScript plugin (using `api.registerMemoryRuntime`) rather than a subprocess
-binary, giving it tighter integration and no external process to manage.
+TypeScript plugin (using `registerMemoryCapability` plus a
+`before_prompt_build` hook) rather than a subprocess binary, giving it tighter
+integration and no external process to manage.
 
 **Advantages over OpenClaw builtin:**
 - Query expansion and cross-encoder reranking (builtin has neither)
@@ -171,9 +172,13 @@ packages/openclaw-plugin/
 ├── openclaw.plugin.json
 ├── src/
 │   ├── index.ts          Plugin entry point: definePluginEntry + register()
-│   ├── runtime.ts        MemorySearchManager implementation
+│   ├── runtime.ts        MemorySearchManager: search (with citations + timeout), readFile, status
 │   ├── lifecycle.ts      SeekxLifecycle: db, watcher, periodic refresh
-│   └── config.ts         Plugin config parsing + seekx config bridge
+│   ├── config.ts         Plugin config parsing + seekx config bridge
+│   ├── prompt.ts         Prompt section builder (recall-first guidance)
+│   ├── auto-recall.ts    Proactive recall via before_prompt_build hook
+│   ├── status-db.ts      Direct SQLite status read (pre-startup fallback)
+│   └── openclaw-sdk.d.ts Type stubs for openclaw/plugin-sdk
 └── skills/
     ├── install/
     │   └── SKILL.md      Agent-executable install + config skill
@@ -286,6 +291,49 @@ packages/openclaw-plugin/
       "type": "boolean",
       "required": false,
       "description": "Auto-index ~/.openclaw/workspace/MEMORY.md and memory/**/*.md. Default: true."
+    },
+    "citations": {
+      "type": "string",
+      "required": false,
+      "enum": ["auto", "on", "off"],
+      "description": "Append Source: path#line footer to search snippets. Default: auto."
+    },
+    "searchTimeoutMs": {
+      "type": "number",
+      "required": false,
+      "description": "Maximum time for a single memory_search call in ms. Default: 8000. Set to 0 to disable."
+    },
+    "autoRecall": {
+      "type": "object",
+      "required": false,
+      "description": "Proactively search seekx during before_prompt_build for recall-style prompts, then inject a bounded set of high-confidence matches.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "required": false,
+          "description": "Enable proactive recall. Default: true."
+        },
+        "maxResults": {
+          "type": "number",
+          "required": false,
+          "description": "Maximum injected matches. Default: 3."
+        },
+        "minScore": {
+          "type": "number",
+          "required": false,
+          "description": "Minimum score required for injection. Default: 0.2."
+        },
+        "maxChars": {
+          "type": "number",
+          "required": false,
+          "description": "Character budget for injected recall context. Default: 1200."
+        },
+        "minQueryLength": {
+          "type": "number",
+          "required": false,
+          "description": "Skip proactive recall for very short prompts. Default: 4."
+        }
+      }
     }
   },
   "openclaw": {
@@ -313,6 +361,14 @@ export interface ExtraPath {
   pattern?: string;
 }
 
+export interface AutoRecallConfig {
+  enabled: boolean;
+  maxResults: number;
+  minScore: number;
+  maxChars: number;
+  minQueryLength: number;
+}
+
 /** Raw shape of what OpenClaw puts in pluginConfig. */
 export interface RawPluginConfig {
   dbPath?: string;
@@ -325,6 +381,9 @@ export interface RawPluginConfig {
   searchLimit?: number;
   refreshIntervalMs?: number;
   includeOpenClawMemory?: boolean;
+  autoRecall?: unknown;
+  citations?: string;
+  searchTimeoutMs?: number;
 }
 
 export interface SeekxPluginConfig {
@@ -336,6 +395,9 @@ export interface SeekxPluginConfig {
   searchLimit: number;
   refreshIntervalMs: number;
   includeOpenClawMemory: boolean;
+  autoRecall: AutoRecallConfig;
+  citations: "auto" | "on" | "off";
+  searchTimeoutMs: number;
 }
 
 /**
@@ -373,6 +435,15 @@ export function resolvePluginConfig(raw: RawPluginConfig): SeekxPluginConfig {
     searchLimit: raw.searchLimit ?? 6,
     refreshIntervalMs: raw.refreshIntervalMs ?? 300_000,
     includeOpenClawMemory: raw.includeOpenClawMemory ?? true,
+    autoRecall: {
+      enabled: true,
+      maxResults: 3,
+      minScore: 0.2,
+      maxChars: 1200,
+      minQueryLength: 4,
+    },
+    citations: normalizeCitations(raw.citations),      // "auto" | "on" | "off"; default "auto"
+    searchTimeoutMs: normalizeSearchTimeoutMs(raw.searchTimeoutMs),  // default 8000; 0 = disabled
   };
 }
 ```
@@ -691,6 +762,8 @@ API.
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { resolvePluginConfig, type RawPluginConfig } from "./config.ts";
 import { SeekxLifecycle } from "./lifecycle.ts";
+import { runAutoRecall, shouldAutoRecall } from "./auto-recall.ts";
+import { buildSeekxMemoryPromptSection } from "./prompt.ts";
 import { buildMemorySearchManager } from "./runtime.ts";
 
 export default definePluginEntry({
@@ -699,16 +772,37 @@ export default definePluginEntry({
     const raw = (api.pluginConfig ?? {}) as RawPluginConfig;
     const config = resolvePluginConfig(raw);
     const lifecycle = new SeekxLifecycle(config);
+    const { manager } = buildMemorySearchManager(lifecycle);
 
-    // Start lifecycle eagerly so the initial index is ready before the first
-    // memory_search call. start() is non-blocking; indexing continues in the
-    // background.
+    // Start eagerly so the initial index is underway before the first
+    // memory_search call arrives. start() is non-blocking; indexing runs
+    // in the background.
     void lifecycle.start();
 
-    api.registerMemoryRuntime({
-      getMemorySearchManager: () => buildMemorySearchManager(lifecycle),
-      resolveMemoryBackendConfig: (rawCfg: unknown) =>
-        resolvePluginConfig(rawCfg as RawPluginConfig),
+    api.registerMemoryCapability({
+      promptBuilder: buildSeekxMemoryPromptSection,
+      runtime: {
+        getMemorySearchManager: () => ({ manager }),
+        resolveMemoryBackendConfig: (rawCfg: unknown) =>
+          resolvePluginConfig(rawCfg as RawPluginConfig),
+      },
+    });
+
+    api.on("before_prompt_build", async (event, ctx) => {
+      if (!shouldAutoRecall(event.prompt, config.autoRecall, ctx.trigger)) {
+        return;
+      }
+
+      const recall = await runAutoRecall({
+        manager,
+        prompt: event.prompt,
+        config: config.autoRecall,
+      });
+
+      if (!recall.injectedContext) return;
+      return {
+        prependContext: recall.injectedContext,
+      };
     });
 
     api.registerService({
@@ -718,6 +812,95 @@ export default definePluginEntry({
   },
 });
 ```
+
+This updated entry point does two distinct jobs:
+- registers the memory runtime and prompt guidance via `registerMemoryCapability`
+- performs proactive memory recall in `before_prompt_build` for high-signal prompts
+
+The important invariant is that both auto-recall and explicit `memory_search`
+go through the same `MemorySearchManager`, so retrieval quality, scoring, and
+collection filtering stay consistent.
+
+---
+
+### `src/auto-recall.ts`
+
+Responsibility: decide when proactive recall should run, derive a search query
+from the user prompt, and compress matching results into a bounded prompt block.
+
+Key controls:
+- `enabled`: master switch
+- `maxResults`: top-k injected items
+- `minScore`: score threshold for injection
+- `maxChars`: prompt budget for injected context
+- `minQueryLength`: suppress low-signal short prompts
+
+The recall path is intentionally conservative: if a prompt does not look like a
+request about prior decisions, earlier notes, remembered preferences, or stored
+todo-style context, nothing is injected.
+
+```typescript
+export function shouldAutoRecall(prompt: string, config: AutoRecallConfig, trigger?: string): boolean {
+  if (!config.enabled) return false;
+  if (trigger && trigger !== "user") return false;
+  // ... recall patterns + skip patterns ...
+}
+
+export async function runAutoRecall(params: {
+  manager: MemorySearchManager;
+  prompt: string;
+  config: AutoRecallConfig;
+}) {
+  const query = buildAutoRecallQuery(params.prompt);
+  const rawResults = await params.manager.search(query, { limit: params.config.maxResults * 3 });
+  const filtered = selectRecallResults(rawResults, params.config);
+  return formatAutoRecallContext(filtered, params.config.maxChars);
+}
+```
+
+---
+
+### `src/runtime.ts`
+
+Responsibility: expose the explicit OpenClaw memory tools (`memory_search`,
+`memory_get`, `status`) and keep their behavior aligned with auto-recall.
+
+```typescript
+async search(query: string, opts: MemorySearchOpts): Promise<MemorySearchResult[]> {
+  await lc.waitForSearchReady();
+  const limit = opts.limit ?? lc.config.searchLimit;
+
+  const searchPromise = hybridSearch(lc.store, lc.client, query, {
+    limit,
+    mode: "hybrid",
+    useExpand: lc.config.expand !== null,
+    useRerank: lc.config.rerank !== null,
+    minResultScore: 0.01,
+    ...(opts.collection ? { collections: [opts.collection] } : {}),
+  });
+
+  // Timeout protection: rejects with SearchTimeoutError if the search
+  // pipeline exceeds the configured budget.  0 = disabled.
+  const timeoutMs = lc.config.searchTimeoutMs;
+  const { results } = timeoutMs > 0
+    ? await withTimeout(searchPromise, timeoutMs)
+    : await searchPromise;
+
+  // Citations: append Source: path#line footer when enabled (QMD-compatible).
+  const citations = opts.citations ?? lc.config.citations;
+
+  return results.map((r) => ({
+    path: r.file,
+    content: appendCitation(r, citations),
+    score: r.score,
+    collection: r.collection,
+    title: r.title ?? null,
+  }));
+}
+```
+
+This shared runtime path matters because auto-recall is not a separate search
+engine. It is only an earlier invocation point for the same retrieval backend.
 
 ---
 
@@ -756,6 +939,13 @@ Add the seekx plugin to ~/.openclaw/openclaw.json:
             "embedModel": "BAAI/bge-large-zh-v1.5",
             "rerankModel": "BAAI/bge-reranker-v2-m3",
             "expandModel": "Qwen/Qwen3-8B",
+            "autoRecall": {
+              "enabled": true,
+              "maxResults": 3,
+              "minScore": 0.2,
+              "maxChars": 1200,
+              "minQueryLength": 4
+            },
             "paths": []
           }
         }
@@ -850,10 +1040,21 @@ Paths outside indexed collections resolve to an empty string.
 User sends message
        │
        ▼
-OpenClaw fires memory_search("query", { limit: 6 })
+OpenClaw builds the prompt
+       │
+       ├─ if prompt looks like prior-decision / preference / earlier-notes recall
+       │      │
+       │      ├─ seekx autoRecall runs search(query)
+       │      ├─ score filter + dedupe + char budget
+       │      └─ prependContext injected into prompt
        │
        ▼
-seekx MemorySearchManager.search("query", { limit: 6 })
+LLM sees: [autoRecall context, if any] + user message
+       │
+       ├─ may still call memory_search("query", { limit: 6 }) for more recall
+       │      │
+       │      ▼
+       │  seekx MemorySearchManager.search("query", { limit: 6 })
        │
        ├─ hybridSearch(store, client, "query", { useExpand: true, useRerank: true })
        │      │
@@ -864,10 +1065,10 @@ seekx MemorySearchManager.search("query", { limit: 6 })
        │      └─ [5] client.rerank(query, candidates) → final ranked list
        │
        ▼
-MemorySearchResult[] → OpenClaw injects snippets into system prompt
+MemorySearchResult[] → OpenClaw returns search results to the model
        │
        ▼
-LLM sees: [context from seekx] + user message → generates response
+LLM generates response
 ```
 
 All stages degrade gracefully: if embed is unavailable, step 3 is skipped
@@ -893,8 +1094,14 @@ Plugin load:
     watcher.start()
     setInterval(indexDirectory, 5min)       ← periodic safety net
 
+Per user prompt:
+  before_prompt_build                        ← optional autoRecall hook
+    shouldAutoRecall(prompt)                 ← heuristic trigger
+    hybridSearch(store, client, query, opts) ← bounded recall search
+    prependContext                           ← inject top matches into prompt
+
 Per memory_search call:
-  hybridSearch(store, client, query, opts)  ← ~50–300ms typical
+  hybridSearch(store, client, query, opts)   ← explicit recall via tool
 
 File change (watcher event):
   indexFile(store, client, collection, path)  ← mtime+hash diff, incremental
@@ -936,6 +1143,15 @@ Test `resolvePluginConfig` with various combinations of:
 - Only seekx config file (no plugin config overrides)
 - Both: verify plugin config fields override seekx config file values
 - Missing required fields: verify graceful degradation (client = null)
+- `autoRecall` defaults, overrides, and invalid values
+
+### Unit tests — `test/auto-recall.test.ts`
+
+Test the proactive recall helper logic:
+- Trigger detection for recall-style prompts
+- Query rewriting for short CJK / English prompts
+- Context formatting and max-char budgeting
+- Empty-result behavior
 
 ### Integration test — `test/lifecycle.test.ts`
 
@@ -998,6 +1214,13 @@ Config: reads API keys and models from existing `~/.seekx/config.yml`.
           "expandModel": "Qwen/Qwen3-8B",
           "searchLimit": 6,
           "includeOpenClawMemory": true,
+          "autoRecall": {
+            "enabled": true,
+            "maxResults": 3,
+            "minScore": 0.2,
+            "maxChars": 1200,
+            "minQueryLength": 4
+          },
           "paths": [
             { "name": "notes",   "path": "~/notes"           },
             { "name": "docs",    "path": "~/projects/docs"   },

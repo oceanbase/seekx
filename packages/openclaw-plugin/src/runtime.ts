@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { hybridSearch } from "seekx-core";
+import { hybridSearch, type SearchResult } from "seekx-core";
 import type {
   MemorySearchManager,
   MemorySearchResult,
@@ -7,6 +7,13 @@ import type {
 } from "openclaw/plugin-sdk/plugin-entry";
 import type { SeekxLifecycle } from "./lifecycle.ts";
 import { readPersistedSeekxStatusSync } from "./status-db.ts";
+
+export class SearchTimeoutError extends Error {
+  constructor(ms: number) {
+    super(`Search timed out after ${ms}ms`);
+    this.name = "SearchTimeoutError";
+  }
+}
 
 type StatusSnapshot = {
   totalDocuments: number;
@@ -62,11 +69,18 @@ export function buildMemorySearchManager(lc: SeekxLifecycle): { manager: MemoryS
      *   - no expand model → original query only
      *   - no embed / sqlite-vec → BM25-only
      *   - no rerank model → RRF-ranked order used directly
+     *
+     * Citations: when citations mode is "auto" or "on", a Source: footer is
+     * appended to each snippet so the agent can trace provenance.
+     *
+     * Timeout: protects against runaway searches (default 8 s).
+     * A value of 0 disables the timeout.
      */
     async search(query: string, opts: MemorySearchOpts): Promise<MemorySearchResult[]> {
       await lc.waitForSearchReady();
       const limit = opts.limit ?? lc.config.searchLimit;
-      const { results } = await hybridSearch(lc.store, lc.client, query, {
+
+      const searchPromise = hybridSearch(lc.store, lc.client, query, {
         limit,
         mode: "hybrid",
         useExpand: lc.config.expand !== null,
@@ -75,9 +89,16 @@ export function buildMemorySearchManager(lc: SeekxLifecycle): { manager: MemoryS
         ...(opts.collection ? { collections: [opts.collection] } : {}),
       });
 
+      const timeoutMs = lc.config.searchTimeoutMs;
+      const { results } = timeoutMs > 0
+        ? await withTimeout(searchPromise, timeoutMs)
+        : await searchPromise;
+
+      const citations = opts.citations ?? lc.config.citations;
+
       return results.map((r) => ({
         path: r.file,
-        content: r.snippet,
+        content: appendCitation(r, citations),
         score: r.score,
         collection: r.collection,
         title: r.title ?? null,
@@ -138,4 +159,37 @@ export function buildMemorySearchManager(lc: SeekxLifecycle): { manager: MemoryS
   };
 
   return { manager };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Append a `Source: path#line` citation footer to the snippet when citations
+ * are enabled.  Matches the QMD citation format that OpenClaw agents expect.
+ */
+function appendCitation(
+  r: SearchResult,
+  mode: "auto" | "on" | "off",
+): string {
+  if (mode === "off") return r.snippet;
+  const line = r.start_line > 0 ? `#${r.start_line}` : "";
+  return `${r.snippet}\nSource: ${r.file}${line}`;
+}
+
+/**
+ * Race a promise against a timeout.  Rejects with SearchTimeoutError if the
+ * timeout fires first.  The underlying promise is NOT cancelled (JS has no
+ * cancellation primitive for arbitrary promises), but its result will be
+ * silently dropped.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new SearchTimeoutError(ms)), ms);
+    promise.then(
+      (val) => { clearTimeout(timer); resolve(val); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
 }

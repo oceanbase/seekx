@@ -8,6 +8,14 @@ export interface ExtraPath {
   pattern?: string;
 }
 
+export interface AutoRecallConfig {
+  enabled: boolean;
+  maxResults: number;
+  minScore: number;
+  maxChars: number;
+  minQueryLength: number;
+}
+
 /** Raw shape of what OpenClaw puts in pluginConfig. */
 export interface RawPluginConfig {
   dbPath?: string;
@@ -20,6 +28,9 @@ export interface RawPluginConfig {
   searchLimit?: number;
   refreshIntervalMs?: number;
   includeOpenClawMemory?: boolean;
+  autoRecall?: unknown;
+  citations?: string;
+  searchTimeoutMs?: number;
 }
 
 export interface SeekxPluginConfig {
@@ -31,6 +42,9 @@ export interface SeekxPluginConfig {
   searchLimit: number;
   refreshIntervalMs: number;
   includeOpenClawMemory: boolean;
+  autoRecall: AutoRecallConfig;
+  citations: "auto" | "on" | "off";
+  searchTimeoutMs: number;
 }
 
 function normalizeExtraPaths(paths: unknown): ExtraPath[] {
@@ -66,6 +80,90 @@ function normalizeExtraPaths(paths: unknown): ExtraPath[] {
       ...(pattern ? { pattern } : {}),
     };
   });
+}
+
+function normalizeAutoRecall(input: unknown): AutoRecallConfig {
+  const defaults: AutoRecallConfig = {
+    enabled: true,
+    maxResults: 3,
+    minScore: 0.2,
+    maxChars: 1200,
+    minQueryLength: 4,
+  };
+
+  if (input == null) return defaults;
+  if (typeof input !== "object") {
+    throw new Error(
+      "Invalid plugin config: autoRecall must be an object with { enabled?, maxResults?, minScore?, maxChars?, minQueryLength? }",
+    );
+  }
+
+  const { enabled, maxResults, minScore, maxChars, minQueryLength } = input as {
+    enabled?: unknown;
+    maxResults?: unknown;
+    minScore?: unknown;
+    maxChars?: unknown;
+    minQueryLength?: unknown;
+  };
+
+  if (enabled != null && typeof enabled !== "boolean") {
+    throw new Error("Invalid plugin config: autoRecall.enabled must be a boolean");
+  }
+  if (
+    maxResults != null &&
+    (typeof maxResults !== "number" || !Number.isInteger(maxResults) || maxResults < 1)
+  ) {
+    throw new Error("Invalid plugin config: autoRecall.maxResults must be a positive integer");
+  }
+  if (minScore != null && (typeof minScore !== "number" || minScore < 0 || minScore > 1)) {
+    throw new Error("Invalid plugin config: autoRecall.minScore must be a number between 0 and 1");
+  }
+  if (
+    maxChars != null &&
+    (typeof maxChars !== "number" || !Number.isInteger(maxChars) || maxChars < 1)
+  ) {
+    throw new Error("Invalid plugin config: autoRecall.maxChars must be a positive integer");
+  }
+  if (
+    minQueryLength != null &&
+    (typeof minQueryLength !== "number" ||
+      !Number.isInteger(minQueryLength) ||
+      minQueryLength < 1)
+  ) {
+    throw new Error(
+      "Invalid plugin config: autoRecall.minQueryLength must be a positive integer",
+    );
+  }
+
+  return {
+    enabled: enabled ?? defaults.enabled,
+    maxResults: typeof maxResults === "number" ? maxResults : defaults.maxResults,
+    minScore: minScore ?? defaults.minScore,
+    maxChars: typeof maxChars === "number" ? maxChars : defaults.maxChars,
+    minQueryLength: typeof minQueryLength === "number" ? minQueryLength : defaults.minQueryLength,
+  };
+}
+
+const VALID_CITATIONS = new Set(["auto", "on", "off"]);
+
+function normalizeCitations(input: unknown): "auto" | "on" | "off" {
+  if (input == null) return "auto";
+  if (typeof input !== "string" || !VALID_CITATIONS.has(input)) {
+    throw new Error(
+      `Invalid plugin config: citations must be "auto", "on", or "off"`,
+    );
+  }
+  return input as "auto" | "on" | "off";
+}
+
+function normalizeSearchTimeoutMs(input: unknown): number {
+  if (input == null) return 8000;
+  if (typeof input !== "number" || !Number.isFinite(input) || input < 0) {
+    throw new Error(
+      "Invalid plugin config: searchTimeoutMs must be a non-negative number",
+    );
+  }
+  return input;
 }
 
 /**
@@ -114,5 +212,8 @@ export function resolvePluginConfig(
     searchLimit: raw.searchLimit ?? 6,
     refreshIntervalMs: raw.refreshIntervalMs ?? 300_000,
     includeOpenClawMemory: raw.includeOpenClawMemory ?? true,
+    autoRecall: normalizeAutoRecall(raw.autoRecall),
+    citations: normalizeCitations(raw.citations),
+    searchTimeoutMs: normalizeSearchTimeoutMs(raw.searchTimeoutMs),
   };
 }

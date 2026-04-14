@@ -31,6 +31,9 @@ No changes to your agent or prompts are needed. The agent keeps using `memory_se
 | Semantic / vector search | — | optional, OpenAI-compatible API |
 | Cross-encoder reranking | — | optional |
 | Query expansion | — | optional (LLM) |
+| Auto-recall | — | optional proactive pre-search on recall-style prompts |
+| Citations | — | optional `Source: path#line` footer on snippets (QMD-compatible) |
+| Search timeout | — | configurable per search (default 8 s) |
 | Extra directories to index | — | unlimited |
 
 All optional stages degrade gracefully: if no API key is configured, seekx runs in BM25-only mode and still outperforms the built-in backend for most queries.
@@ -278,6 +281,18 @@ All fields under `plugins.entries.seekx.config` are optional. Fields not provide
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `searchLimit` | `number` | `6` | Maximum results per `memory_search` call. Recommended range: 4–12. |
+| `citations` | `string` | `"auto"` | `"auto"` / `"on"` / `"off"` — append `Source: path#line` footer to search snippets. |
+| `searchTimeoutMs` | `number` | `8000` | Maximum time (ms) for a single `memory_search` call. Set to `0` to disable. |
+
+### Auto recall
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `autoRecall.enabled` | `boolean` | `true` | Run a proactive seekx search before prompt build on recall-style user prompts. |
+| `autoRecall.maxResults` | `number` | `3` | Maximum injected matches. |
+| `autoRecall.minScore` | `number` | `0.2` | Minimum score threshold for injection. |
+| `autoRecall.maxChars` | `number` | `1200` | Character budget for injected context. |
+| `autoRecall.minQueryLength` | `number` | `4` | Skip auto-recall when the user prompt is shorter than this length. |
 
 ### Watcher and refresh
 
@@ -385,4 +400,5 @@ The file watcher picks up changes within ~1 second under normal conditions. Netw
 - [seekx CLI](https://www.npmjs.com/package/seekx) — use seekx as a standalone search tool or MCP server
 - [seekx-core](https://www.npmjs.com/package/seekx-core) — the search engine library used by this plugin
 - [Full user guide](https://github.com/oceanbase/seekx/blob/main/docs/openclaw-plugin-user-guide.md) — detailed reference with design notes
+- [Design document](https://github.com/oceanbase/seekx/blob/main/docs/openclaw-plugin-design.md) — architecture, data flow, implementation notes
 - [Install skill](./skills/install/SKILL.md) — agent-executable step-by-step install guide

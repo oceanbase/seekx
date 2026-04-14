@@ -54,6 +54,34 @@
       },
       "includeOpenClawMemory": {
         "type": "boolean"
+      },
+      "citations": {
+        "type": "string",
+        "enum": ["auto", "on", "off"]
+      },
+      "searchTimeoutMs": {
+        "type": "number"
+      },
+      "autoRecall": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "maxResults": {
+            "type": "number"
+          },
+          "minScore": {
+            "type": "number"
+          },
+          "maxChars": {
+            "type": "number"
+          },
+          "minQueryLength": {
+            "type": "number"
+          }
+        }
       }
     }
   },
@@ -81,6 +109,18 @@
       "label": "Query expansion model",
       "placeholder": "Qwen/Qwen3-8B",
       "help": "Omit to disable query expansion."
+    },
+    "citations": {
+      "label": "Citations mode",
+      "help": "Append Source: path#line footer to search snippets. \"auto\" (default) or \"on\" enables it; \"off\" suppresses the footer while still passing the path internally."
+    },
+    "searchTimeoutMs": {
+      "label": "Search timeout (ms)",
+      "help": "Maximum time for a single memory_search call. Default 8000ms. Set to 0 to disable."
+    },
+    "autoRecall": {
+      "label": "Auto recall",
+      "help": "Proactively search seekx before prompt build for recall-style user requests, then inject a small set of high-confidence matches into the prompt."
     }
   }
 }

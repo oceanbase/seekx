@@ -48,6 +48,7 @@ Full guide (configuration, CLI reference, how search works, macOS SQLite notes):
 | `seekx watch` | File watcher |
 | `seekx status` | Stats and health |
 | `seekx config` | View or edit config |
+| `seekx mcp` | Start MCP server (stdio) |
 
 ## License
 

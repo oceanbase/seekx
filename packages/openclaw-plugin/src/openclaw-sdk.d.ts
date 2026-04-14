@@ -18,6 +18,8 @@ declare module "openclaw/plugin-sdk/plugin-entry" {
   export interface MemorySearchOpts {
     limit?: number;
     collection?: string;
+    /** Citations mode passed through from OpenClaw's memory.citations setting. */
+    citations?: "auto" | "on" | "off";
   }
 
   /**
@@ -64,6 +66,46 @@ declare module "openclaw/plugin-sdk/plugin-entry" {
     resolveMemoryBackendConfig(raw: unknown): unknown;
   }
 
+  export type MemoryPromptSectionBuilder = (params: {
+    availableTools: Set<string>;
+    citationsMode?: string;
+  }) => string[];
+
+  export interface MemoryPluginCapability {
+    promptBuilder?: MemoryPromptSectionBuilder;
+    runtime?: MemoryRuntimeRegistration;
+  }
+
+  export interface PluginHookAgentContext {
+    agentId?: string;
+    sessionKey?: string;
+    sessionId?: string;
+    workspaceDir?: string;
+    trigger?: string;
+  }
+
+  export interface PluginHookBeforePromptBuildEvent {
+    prompt: string;
+    messages: unknown[];
+  }
+
+  export interface PluginHookBeforePromptBuildResult {
+    systemPrompt?: string;
+    prependContext?: string;
+    prependSystemContext?: string;
+    appendSystemContext?: string;
+  }
+
+  export interface PluginHookHandlerMap {
+    before_prompt_build: (
+      event: PluginHookBeforePromptBuildEvent,
+      ctx: PluginHookAgentContext,
+    ) =>
+      | Promise<PluginHookBeforePromptBuildResult | void>
+      | PluginHookBeforePromptBuildResult
+      | void;
+  }
+
   export interface PluginServiceContext {}
 
   export interface PluginService {
@@ -93,6 +135,21 @@ declare module "openclaw/plugin-sdk/plugin-entry" {
      * Sets this plugin as the active memory backend.
      */
     registerMemoryRuntime(registration: MemoryRuntimeRegistration): void;
+
+    /**
+     * Preferred unified memory capability registration.
+     * Allows a memory plugin to expose both prompt guidance and runtime.
+     */
+    registerMemoryCapability(capability: MemoryPluginCapability): void;
+
+    /**
+     * Register a lifecycle hook handler.
+     */
+    on<K extends keyof PluginHookHandlerMap>(
+      hookName: K,
+      handler: PluginHookHandlerMap[K],
+      opts?: { priority?: number },
+    ): void;
 
     /**
      * Register a long-lived background service.
