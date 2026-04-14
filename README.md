@@ -128,10 +128,10 @@ Query
   ▼                                ▼
   Original query            Expanded queries
   │                                │
-  ├─► BM25  (weight 2×)           ├─► BM25  (weight 1×)
-  ├─► Vector (weight 2×)          ├─► Vector (weight 1×)
+  ├─► BM25  (weight 2×)            ├─► BM25  (weight 1×)
+  ├─► Vector (weight 2×)           ├─► Vector (weight 1×)
   │                                │
-  │   [HyDE] ──► Vector (1×)      │
+  │   [HyDE] ──► Vector (1×)       │
   │                                │
   └────────── all lists ───────────┘
                   │
