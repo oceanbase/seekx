@@ -7,6 +7,38 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.3.0] — 2026-04-14
+
+### Added
+
+**`@seekx/openclaw` (new package — `0.3.0`)**
+- First published OpenClaw memory-backend plugin: hybrid BM25 + vector search with reranking and CJK support.
+- Ships `skills/` directory and `openclaw.plugin.json` for OpenClaw host integration.
+
+**`seekx-core`**
+- `--min-score` / `min_result_score` threshold supported by the search pipeline (post-fusion filter).
+- Reproducible benchmark workflows with lock-tolerance helpers (`bench/`).
+
+**`seekx` (CLI)**
+- `seekx search` accepts `--min-score <n>` to filter out low-confidence results.
+- `seekx onboard` supports non-interactive mode (`--yes` / env-driven) for automated setup.
+- `--version` and MCP server version are now derived from `package.json` at runtime.
+
+### Changed
+
+**`seekx-core`**
+- Replaced `bun:sqlite` with [`better-sqlite3`](https://github.com/WiseLibs/better-sqlite3) so that `seekx-core` can be loaded by Node.js runtimes (e.g. via `jiti`), removing the hard Bun-only constraint.
+- Removed top-level `await` in `db.ts` for compatibility with Node/jiti loaders.
+
+### Fixed
+
+**`@seekx/openclaw`**
+- Hardened runtime startup and file-access error paths.
+- Removed `openclaw` `peerDependency` (not on npm registry, caused install failures).
+- Replaced `workspace:*` with the published `seekx-core` version in the published tarball.
+
+---
+
 ## [0.2.3] — 2026-04-10
 
 ### Added

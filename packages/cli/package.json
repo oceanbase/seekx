@@ -1,6 +1,6 @@
 {
   "name": "seekx",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "CLI for hybrid local search: BM25 + vector embeddings, incremental indexing, and realtime file watch. Requires Bun.",
   "keywords": [
     "seekx",
@@ -37,7 +37,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.10.2",
-    "seekx-core": "^0.2.2",
+    "seekx-core": "^0.3.0",
     "commander": "^13.1.0",
     "@inquirer/prompts": "^7.5.0",
     "zod": "^3.24.2"
